@@ -1,0 +1,39 @@
+{
+  "name": "@studynest/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && electron-builder",
+    "electron": "electron .",
+    "typecheck": "tsc -b --noEmit",
+    "seed": "tsx scripts/seed.ts",
+    "fetch-model": "tsx scripts/fetch-model.ts"
+  },
+  "dependencies": {
+    "@studynest/db-schema": "workspace:*",
+    "@studynest/i18n": "workspace:*",
+    "@studynest/prompts": "workspace:*",
+    "@studynest/shared": "workspace:*",
+    "@studynest/sync": "workspace:*",
+    "@studynest/ui": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.11.0",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^32.3.3",
+    "electron-builder": "^25.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vite-plugin-electron": "^0.28.7",
+    "vite-plugin-electron-renderer": "^0.14.5"
+  }
+}

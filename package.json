@@ -1,0 +1,29 @@
+{
+  "name": "studynest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StudyNest — offline-first AI study workspace",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "mobile": "pnpm --filter @studynest/mobile",
+    "desktop": "pnpm --filter @studynest/desktop",
+    "api": "pnpm --filter @studynest/api",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "electron:download": "node scripts/ensure-electron.cjs",
+    "postinstall": "node scripts/ensure-electron.cjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.5.4",
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "StudyNest",
+    "slug": "studynest",
+    "scheme": "studynest",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "splash": {
+      "backgroundColor": "#0F1117",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.studynest.studynest",
+      "infoPlist": {
+        "NSCameraUsageDescription": "StudyNest uses your camera to capture photos of notes and whiteboards.",
+        "NSMicrophoneUsageDescription": "StudyNest records audio so you can capture lectures.",
+        "NSPhotoLibraryUsageDescription": "StudyNest can attach images from your photo library to your notes."
+      }
+    },
+    "android": {
+      "package": "app.studynest.studynest",
+      "permissions": ["RECORD_AUDIO", "CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "StudyNest can attach images from your photo library to your notes.",
+          "cameraPermission": "StudyNest uses your camera to capture photos of notes and whiteboards."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "StudyNest records audio so you can capture lectures."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

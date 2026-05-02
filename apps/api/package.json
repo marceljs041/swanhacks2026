@@ -1,0 +1,11 @@
+{
+  "name": "@studynest/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload --port 8000",
+    "sidecar": "python -m local_sidecar.main",
+    "build": "echo 'python — nothing to build'",
+    "lint": "ruff check ."
+  }
+}
