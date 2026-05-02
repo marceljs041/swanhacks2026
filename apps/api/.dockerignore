@@ -1,8 +1,0 @@
-**/node_modules
-**/.turbo
-**/dist
-**/.expo
-apps/mobile
-.git
-.env
-.env.*

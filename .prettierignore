@@ -1,7 +1,0 @@
-**/node_modules/
-**/dist/
-**/.turbo/
-**/.expo/
-**/ios/
-**/android/
-pnpm-lock.yaml
