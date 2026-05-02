@@ -5,7 +5,6 @@ import { useApp, type View } from "../store.js";
 import { BRAND_LOGO_URL } from "../lib/brand.js";
 import {
   CalendarIcon,
-  ChevDownIcon,
   ClassIcon,
   FlashcardIcon,
   HomeIcon,
@@ -22,8 +21,8 @@ interface NavItem {
 }
 
 /**
- * The seven primary destinations match the reference design 1:1.
- * Classes get a sub-list rendered below the main nav once classes load.
+ * Primary destinations shown at the top of the sidebar. Settings is rendered
+ * separately, pinned to the bottom of the rail.
  */
 const NAV: NavItem[] = [
   { key: "home",       label: "Home",       icon: <HomeIcon />,      view: { kind: "home" } },
@@ -32,8 +31,14 @@ const NAV: NavItem[] = [
   { key: "flashcards", label: "Flashcards", icon: <FlashcardIcon />, view: { kind: "flashcards" } },
   { key: "quizzes",    label: "Quizzes",    icon: <QuizIcon />,      view: { kind: "quizzes" } },
   { key: "calendar",   label: "Calendar",   icon: <CalendarIcon />,  view: { kind: "calendar" } },
-  { key: "settings",   label: "Settings",   icon: <SettingsIcon />,  view: { kind: "settings" } },
 ];
+
+const SETTINGS_ITEM: NavItem = {
+  key: "settings",
+  label: "Settings",
+  icon: <SettingsIcon />,
+  view: { kind: "settings" },
+};
 
 /** A sub-view counts as "active" if it belongs to the same top-level destination. */
 function isActive(viewKind: View["kind"], itemKey: View["kind"]): boolean {
@@ -83,27 +88,17 @@ export const Sidebar: FC = () => {
 
       <div className="sidebar-spacer" />
 
-      <SidebarProfile />
+      <nav className="sidebar-nav sidebar-nav-bottom">
+        <button
+          key={SETTINGS_ITEM.key}
+          type="button"
+          className={`nav-item ${isActive(view.kind, SETTINGS_ITEM.key) ? "active" : ""}`}
+          onClick={() => setView(SETTINGS_ITEM.view)}
+        >
+          <span className="nav-icon">{SETTINGS_ITEM.icon}</span>
+          <span>{SETTINGS_ITEM.label}</span>
+        </button>
+      </nav>
     </aside>
-  );
-};
-
-const SidebarProfile: FC = () => {
-  return (
-    <div className="sidebar-profile">
-      <div className="avatar" aria-hidden>M</div>
-      <div className="who">
-        <span className="name">Marcel</span>
-        <span className="plan">Student Plan</span>
-      </div>
-      <button
-        type="button"
-        className="chev"
-        aria-label="Account menu"
-        style={{ background: "none", border: "none", padding: 4 }}
-      >
-        <ChevDownIcon size={16} />
-      </button>
-    </div>
   );
 };
