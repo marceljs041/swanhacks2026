@@ -8,13 +8,17 @@ import type {
   StudyTaskRow,
   SyncStatus,
 } from "@studynest/shared";
+import type { ThemeName } from "@studynest/ui";
+import { applyTheme, getStoredTheme } from "./lib/theme.js";
 
 export type View =
   | { kind: "home" }
   | { kind: "notes" }
   | { kind: "note"; noteId: string }
-  | { kind: "study" }
-  | { kind: "flashcards"; setId: string }
+  | { kind: "classes" }
+  | { kind: "flashcards" } // hub: list of decks + due cards
+  | { kind: "flashcardSet"; setId: string } // single-deck review
+  | { kind: "quizzes" } // hub: list of quizzes
   | { kind: "quiz"; quizId: string }
   | { kind: "calendar" }
   | { kind: "settings" };
@@ -34,6 +38,7 @@ interface AppState {
   sidecarModel: string | null;
   xpToday: number;
   streak: number;
+  theme: ThemeName;
 
   setView: (v: View) => void;
   setClasses: (c: ClassRow[]) => void;
@@ -47,6 +52,7 @@ interface AppState {
   setSyncStatus: (s: SyncStatus) => void;
   setSidecar: (loaded: boolean, model: string | null) => void;
   setXp: (xp: number, streak: number) => void;
+  setTheme: (t: ThemeName) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -64,6 +70,7 @@ export const useApp = create<AppState>((set) => ({
   sidecarModel: null,
   xpToday: 0,
   streak: 0,
+  theme: getStoredTheme(),
 
   setView: (view) => set({ view }),
   setClasses: (classes) => set({ classes }),
@@ -77,4 +84,8 @@ export const useApp = create<AppState>((set) => ({
   setSyncStatus: (syncStatus) => set({ syncStatus }),
   setSidecar: (sidecarLoaded, sidecarModel) => set({ sidecarLoaded, sidecarModel }),
   setXp: (xpToday, streak) => set({ xpToday, streak }),
+  setTheme: (theme) => {
+    applyTheme(theme);
+    set({ theme });
+  },
 }));

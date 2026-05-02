@@ -16,7 +16,8 @@ function createWindow(): void {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: "#0F1117",
+    backgroundColor: "#FBF5EC",
+    /** Inset traffic lights + seamless top; renderer paints a matching drag strip. */
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
       preload: join(__dirname, "preload.js"),

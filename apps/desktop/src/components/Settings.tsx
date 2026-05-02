@@ -1,23 +1,23 @@
 import type { FC } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CLOUD_API_BASE_URL } from "@studynest/shared";
+import { themes, type ThemeName } from "@studynest/ui";
 import { useApp } from "../store.js";
 import { setUserId } from "../db/client.js";
+import { Card } from "./ui/Card.js";
+import { Placeholder } from "./ui/Placeholder.js";
+import { CheckIcon, SettingsIcon } from "./icons.js";
 
 export const Settings: FC = () => {
   const sidecarLoaded = useApp((s) => s.sidecarLoaded);
   const sidecarModel = useApp((s) => s.sidecarModel);
   const syncStatus = useApp((s) => s.syncStatus);
+  const theme = useApp((s) => s.theme);
+  const setTheme = useApp((s) => s.setTheme);
+
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [enterCode, setEnterCode] = useState("");
   const [pairResult, setPairResult] = useState<string | null>(null);
-
-  useEffect(() => {
-    void window.studynest?.sidecarStatus().then((s) => {
-      // status is reflected by the App-level poller — this is just a refresh.
-      void s;
-    });
-  }, []);
 
   async function startPair(): Promise<void> {
     const res = await fetch(`${CLOUD_API_BASE_URL}/devices/pair/start`, { method: "POST" });
@@ -43,65 +43,129 @@ export const Settings: FC = () => {
   }
 
   return (
-    <div className="main">
-      <div className="toolbar">
-        <h2 style={{ margin: 0 }}>Settings</h2>
-      </div>
-      <div style={{ padding: 24, display: "grid", gap: 24, maxWidth: 720 }}>
-        <div className="stat-card">
-          <div className="label">Local AI</div>
-          <div style={{ marginTop: 8 }}>
-            {sidecarLoaded ? (
-              <>
-                Loaded: <strong>{sidecarModel}</strong>
-              </>
-            ) : (
-              <span style={{ color: "var(--muted)" }}>
-                Local GGUF model is not loaded (sidecar may still be running). The app will
-                fall back to the cloud API for AI. Run <code>pnpm desktop fetch-model</code>{" "}
-                from the repo root, or set <code>STUDYNEST_GEMMA_MODEL_PATH</code> to an
-                absolute path, then restart the desktop app.
-              </span>
-            )}
-          </div>
+    <main className="main">
+      <div className="main-inner">
+        <div className="page-header">
+          <SettingsIcon size={22} />
+          <h1>Settings</h1>
         </div>
-        <div className="stat-card">
-          <div className="label">Sync</div>
-          <div style={{ marginTop: 8 }}>
-            Status: <span className={`pill ${syncStatus}`}>{syncStatus}</span>
-          </div>
-          <div style={{ marginTop: 8, color: "var(--muted)" }}>
-            Cloud API: <code>{CLOUD_API_BASE_URL}</code>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="label">Device pairing</div>
-          <div style={{ marginTop: 12, display: "flex", gap: 24, alignItems: "flex-start" }}>
-            <div>
-              <button onClick={() => void startPair()}>Generate pairing code</button>
-              {pairCode && (
-                <div style={{ marginTop: 12, fontSize: 32, fontWeight: 700, letterSpacing: 6 }}>
-                  {pairCode}
-                </div>
+
+        <div className="settings-grid">
+          {/* Theme switcher — proves the modular palette in action. */}
+          <Card title="Appearance">
+            <div className="setting-row" style={{ background: "transparent", border: "none", padding: 0 }}>
+              <div className="meta">
+                <span className="name">Theme</span>
+                <span className="desc">
+                  Pick a colour palette. More themes can be added by extending
+                  <code style={{ marginLeft: 4 }}>@studynest/ui</code>.
+                </span>
+              </div>
+              <div className="theme-swatches">
+                {(Object.keys(themes) as ThemeName[]).map((name) => (
+                  <ThemeSwatch
+                    key={name}
+                    name={name}
+                    active={theme === name}
+                    onPick={() => setTheme(name)}
+                  />
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Local AI">
+            <div style={{ fontSize: 13 }}>
+              {sidecarLoaded ? (
+                <>
+                  Loaded: <strong>{sidecarModel}</strong>
+                </>
+              ) : (
+                <span style={{ color: "var(--color-textMuted)" }}>
+                  Local GGUF model is not loaded (sidecar may still be running). The app falls back
+                  to the cloud API for AI. Run <code>pnpm desktop fetch-model</code> from the repo
+                  root, or set <code>STUDYNEST_GEMMA_MODEL_PATH</code> to an absolute path, then
+                  restart the desktop app.
+                </span>
               )}
             </div>
-            <div>
-              <input
-                placeholder="Enter pairing code from another device"
-                value={enterCode}
-                onChange={(e) => setEnterCode(e.target.value)}
-                style={{ width: 280 }}
-              />
-              <button style={{ marginTop: 8 }} onClick={() => void confirmPair()}>
-                Pair this device
-              </button>
-              {pairResult && (
-                <div style={{ marginTop: 8, color: "var(--muted)" }}>{pairResult}</div>
-              )}
+          </Card>
+
+          <Card title="Sync">
+            <div style={{ fontSize: 13 }}>
+              Status: <span className={`pill ${syncStatus}`}><span className="dot" /> {syncStatus}</span>
             </div>
-          </div>
+            <div style={{ marginTop: 8, color: "var(--color-textMuted)", fontSize: 12 }}>
+              Cloud API: <code>{CLOUD_API_BASE_URL}</code>
+            </div>
+          </Card>
+
+          <Card title="Device pairing">
+            <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div>
+                <button className="btn-secondary" onClick={() => void startPair()}>
+                  Generate pairing code
+                </button>
+                {pairCode && (
+                  <div style={{ marginTop: 12, fontSize: 32, fontWeight: 700, letterSpacing: 6 }}>
+                    {pairCode}
+                  </div>
+                )}
+              </div>
+              <div style={{ minWidth: 280, display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  className="field"
+                  placeholder="Enter pairing code from another device"
+                  value={enterCode}
+                  onChange={(e) => setEnterCode(e.target.value)}
+                />
+                <button className="btn-primary" onClick={() => void confirmPair()}>
+                  Pair this device
+                </button>
+                {pairResult && (
+                  <div style={{ color: "var(--color-textMuted)", fontSize: 12 }}>{pairResult}</div>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Notifications">
+            <Placeholder
+              title="Notifications not yet implemented"
+              description="Daily study reminders and deadline pings are on the roadmap."
+            />
+          </Card>
+
+          <Card title="Account">
+            <Placeholder
+              title="Account management not yet implemented"
+              description="Profile, password, and subscription settings will live here."
+            />
+          </Card>
         </div>
       </div>
-    </div>
+    </main>
+  );
+};
+
+const ThemeSwatch: FC<{ name: ThemeName; active: boolean; onPick: () => void }> = ({
+  name,
+  active,
+  onPick,
+}) => {
+  const palette = themes[name];
+  return (
+    <button
+      type="button"
+      className={`theme-swatch ${active ? "active" : ""}`}
+      title={name}
+      onClick={onPick}
+      style={{
+        background: `linear-gradient(135deg, ${palette.primary} 0 50%, ${palette.surface} 50% 100%)`,
+        borderColor: active ? palette.primary : "var(--color-border)",
+      }}
+    >
+      {active && <CheckIcon size={14} />}
+    </button>
   );
 };

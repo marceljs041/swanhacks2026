@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const api = {
+  /** Used by the renderer for platform-specific UI (e.g. custom macOS title bar). */
+  platform: process.platform,
   getPaths: () =>
     ipcRenderer.invoke("app:get-paths") as Promise<{
       userData: string;

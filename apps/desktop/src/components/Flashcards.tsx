@@ -4,6 +4,7 @@ import { listFlashcards, recordXp, upsertFlashcard } from "../db/repositories.js
 import { useApp } from "../store.js";
 import type { Difficulty, FlashcardRow } from "@studynest/shared";
 import { XP_RULES, nowIso } from "@studynest/shared";
+import { ChevLeftIcon } from "./icons.js";
 
 interface Props {
   setId: string;
@@ -59,7 +60,7 @@ export const Flashcards: FC<Props> = ({ setId }) => {
       await recordXp("reviewTenCards", XP_RULES.reviewTenCards);
     }
     if (idx + 1 >= cards.length) {
-      setView({ kind: "study" });
+      setView({ kind: "flashcards" });
       return;
     }
     setIdx(idx + 1);
@@ -67,39 +68,38 @@ export const Flashcards: FC<Props> = ({ setId }) => {
   }
 
   if (!card) {
-    return <div className="main empty">No cards in this set.</div>;
+    return <main className="main empty">No cards in this set.</main>;
   }
 
   return (
-    <div className="main">
-      <div className="toolbar">
-        <button className="ghost" onClick={() => setView({ kind: "study" })}>
-          ← Study
-        </button>
-        <div style={{ flex: 1 }} />
-        <span style={{ color: "var(--muted)" }}>
-          Card {idx + 1} of {cards.length}
-        </span>
+    <main className="main">
+      <div className="topbar">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn-ghost" onClick={() => setView({ kind: "flashcards" })}>
+            <ChevLeftIcon size={14} /> Decks
+          </button>
+          <span style={{ flex: 1 }} />
+          <span style={{ color: "var(--color-textMuted)", fontSize: 12 }}>
+            Card {idx + 1} of {cards.length}
+          </span>
+        </div>
       </div>
-      <div style={{ padding: 24, maxWidth: 720, margin: "0 auto", width: "100%" }}>
+      <div className="main-inner" style={{ maxWidth: 720 }}>
         <div className="flashcard" onClick={() => setFlipped((f) => !f)}>
           <div>{flipped ? card.back : card.front}</div>
         </div>
-        {flipped && (
-          <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "center" }}>
-            <button onClick={() => void rate("hard")}>Hard</button>
-            <button onClick={() => void rate("medium")}>Medium</button>
-            <button onClick={() => void rate("easy")} className="primary">
-              Easy
-            </button>
+        {flipped ? (
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button className="btn-secondary" onClick={() => void rate("hard")}>Hard</button>
+            <button className="btn-secondary" onClick={() => void rate("medium")}>Medium</button>
+            <button className="btn-primary" onClick={() => void rate("easy")}>Easy</button>
           </div>
-        )}
-        {!flipped && (
-          <div style={{ textAlign: "center", marginTop: 16, color: "var(--muted)" }}>
-            Click the card to reveal
+        ) : (
+          <div style={{ textAlign: "center", color: "var(--color-textMuted)", fontSize: 13 }}>
+            Click the card to reveal the answer
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 };

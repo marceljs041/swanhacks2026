@@ -4,6 +4,8 @@ import { listQuizQuestions, recordQuizAttempt, recordXp } from "../db/repositori
 import { useApp } from "../store.js";
 import type { QuizQuestionRow } from "@studynest/shared";
 import { XP_RULES } from "@studynest/shared";
+import { Card } from "./ui/Card.js";
+import { ChevLeftIcon } from "./icons.js";
 
 interface Props {
   quizId: string;
@@ -41,32 +43,47 @@ export const Quiz: FC<Props> = ({ quizId }) => {
   }
 
   return (
-    <div className="main">
-      <div className="toolbar">
-        <button className="ghost" onClick={() => setView({ kind: "study" })}>
-          ← Study
-        </button>
-        <div style={{ flex: 1 }} />
-        {submitted && (
-          <span style={{ color: "var(--accent)" }}>
-            Score: {submitted.score} / {submitted.total}
-          </span>
-        )}
+    <main className="main">
+      <div className="topbar">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn-ghost" onClick={() => setView({ kind: "quizzes" })}>
+            <ChevLeftIcon size={14} /> Quizzes
+          </button>
+          <span style={{ flex: 1 }} />
+          {submitted && (
+            <span className="pill" style={{ background: "var(--color-primarySoft)", color: "var(--color-primaryStrong)" }}>
+              Score: {submitted.score} / {submitted.total}
+            </span>
+          )}
+        </div>
       </div>
-      <div style={{ padding: 24, maxWidth: 720, margin: "0 auto", width: "100%" }}>
+      <div className="main-inner" style={{ maxWidth: 760 }}>
         {questions.map((q, i) => {
           const opts: string[] = q.options_json ? (JSON.parse(q.options_json) as string[]) : [];
           const userAnswer = answers[q.id];
-          const isCorrect = submitted && userAnswer?.trim().toLowerCase() === q.correct_answer.trim().toLowerCase();
+          const isCorrect =
+            submitted && userAnswer?.trim().toLowerCase() === q.correct_answer.trim().toLowerCase();
           return (
-            <div key={q.id} className="note-card" style={{ marginBottom: 16 }}>
-              <div className="note-card-title">
+            <Card key={q.id}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
                 {i + 1}. {q.question}
               </div>
-              <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
+              <div style={{ marginTop: 4, display: "grid", gap: 8 }}>
                 {q.type === "multiple_choice" &&
                   opts.map((o) => (
-                    <label key={o} style={{ display: "flex", gap: 8, cursor: "pointer" }}>
+                    <label
+                      key={o}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "8px 10px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--color-border)",
+                        cursor: "pointer",
+                        background: userAnswer === o ? "var(--color-primarySoft)" : "transparent",
+                      }}
+                    >
                       <input
                         type="radio"
                         name={q.id}
@@ -79,7 +96,19 @@ export const Quiz: FC<Props> = ({ quizId }) => {
                   ))}
                 {q.type === "true_false" &&
                   ["true", "false"].map((o) => (
-                    <label key={o} style={{ display: "flex", gap: 8, cursor: "pointer" }}>
+                    <label
+                      key={o}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "8px 10px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--color-border)",
+                        cursor: "pointer",
+                        background: userAnswer === o ? "var(--color-primarySoft)" : "transparent",
+                      }}
+                    >
                       <input
                         type="radio"
                         name={q.id}
@@ -87,34 +116,37 @@ export const Quiz: FC<Props> = ({ quizId }) => {
                         onChange={() => answer(q.id, o)}
                         disabled={!!submitted}
                       />
-                      <span>{o}</span>
+                      <span style={{ textTransform: "capitalize" }}>{o}</span>
                     </label>
                   ))}
               </div>
               {submitted && (
                 <div
                   style={{
-                    marginTop: 8,
-                    color: isCorrect ? "var(--success)" : "var(--danger)",
                     fontSize: 13,
+                    color: isCorrect ? "var(--color-success)" : "var(--color-danger)",
                   }}
                 >
                   {isCorrect ? "Correct" : `Correct answer: ${q.correct_answer}`}
                   {q.explanation && (
-                    <div style={{ color: "var(--muted)", marginTop: 4 }}>{q.explanation}</div>
+                    <div style={{ color: "var(--color-textMuted)", marginTop: 4 }}>
+                      {q.explanation}
+                    </div>
                   )}
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
         {!submitted && questions.length > 0 && (
-          <button className="primary" onClick={() => void submit()}>
-            Submit
+          <button className="btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => void submit()}>
+            Submit answers
           </button>
         )}
-        {questions.length === 0 && <div className="empty">No questions in this quiz.</div>}
+        {questions.length === 0 && (
+          <div className="empty">No questions in this quiz yet.</div>
+        )}
       </div>
-    </div>
+    </main>
   );
 };

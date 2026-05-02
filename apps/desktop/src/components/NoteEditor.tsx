@@ -15,6 +15,13 @@ import {
 import { useApp } from "../store.js";
 import { XP_RULES } from "@studynest/shared";
 import type { FlashcardSetRow, NoteRow, QuizRow } from "@studynest/shared";
+import { Card } from "./ui/Card.js";
+import {
+  ChevLeftIcon,
+  FlashcardIcon,
+  QuizIcon,
+  SparklesIcon,
+} from "./icons.js";
 
 interface Props {
   noteId: string;
@@ -109,24 +116,26 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
   }
 
   if (!note) {
-    return <div className="main empty">Loading…</div>;
+    return <main className="main empty">Loading…</main>;
   }
 
   return (
     <>
-      <div className="main">
-        <div className="toolbar">
-          <button className="ghost" onClick={() => setView({ kind: "notes" })}>
-            ← Notes
-          </button>
-          <div style={{ flex: 1 }} />
-          <span style={{ color: "var(--muted)", fontSize: 12 }}>
-            {new Date(note.updated_at).toLocaleString()}
-          </span>
+      <main className="main">
+        <div className="topbar">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="btn-ghost" onClick={() => setView({ kind: "notes" })}>
+              <ChevLeftIcon size={14} /> Notes
+            </button>
+            <span className="spacer" style={{ flex: 1 }} />
+            <span style={{ color: "var(--color-textSubtle)", fontSize: 12 }}>
+              {new Date(note.updated_at).toLocaleString()}
+            </span>
+          </div>
         </div>
         <div className="note-editor">
           <input
-            className="note-title"
+            className="note-title-input"
             placeholder="Untitled"
             value={title}
             onChange={(e) => {
@@ -135,7 +144,7 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
             }}
           />
           <textarea
-            className="note-body"
+            className="note-body-input"
             placeholder="Start writing — markdown supported. Press the AI buttons on the right when you're ready."
             value={body}
             onChange={(e) => {
@@ -144,66 +153,70 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
             }}
           />
         </div>
-      </div>
+      </main>
       <aside className="right-panel">
-        <section>
-          <h3>AI actions</h3>
+        <Card title="AI actions" icon={<SparklesIcon size={16} />}>
           <div style={{ display: "grid", gap: 8 }}>
-            <button onClick={() => void runAi("summarize")} disabled={!!busy}>
+            <button className="btn-secondary" onClick={() => void runAi("summarize")} disabled={!!busy}>
               {busy === "summarize" ? "Thinking offline…" : "Summarize"}
             </button>
-            <button onClick={() => void runAi("simple")} disabled={!!busy}>
+            <button className="btn-secondary" onClick={() => void runAi("simple")} disabled={!!busy}>
               {busy === "simple" ? "Thinking offline…" : "Explain simply"}
             </button>
-            <button onClick={() => void runAi("flashcards")} disabled={!!busy}>
+            <button className="btn-secondary" onClick={() => void runAi("flashcards")} disabled={!!busy}>
               {busy === "flashcards" ? "Thinking offline…" : "Generate flashcards"}
             </button>
-            <button onClick={() => void runAi("quiz")} disabled={!!busy}>
+            <button className="btn-secondary" onClick={() => void runAi("quiz")} disabled={!!busy}>
               {busy === "quiz" ? "Thinking offline…" : "Generate quiz"}
             </button>
           </div>
           {error && (
-            <div style={{ marginTop: 8, color: "var(--danger)", fontSize: 12 }}>{error}</div>
+            <div className="pill error" style={{ marginTop: 8 }}>{error}</div>
           )}
-        </section>
+        </Card>
 
         {note.summary && (
-          <section>
-            <h3>Summary</h3>
-            <div style={{ whiteSpace: "pre-wrap" }}>{note.summary}</div>
-          </section>
+          <Card title="Summary">
+            <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--color-text)" }}>
+              {note.summary}
+            </div>
+          </Card>
         )}
 
         {sets.length > 0 && (
-          <section>
-            <h3>Flashcard sets</h3>
-            {sets.map((s) => (
-              <div
-                key={s.id}
-                className="note-card"
-                style={{ marginBottom: 6 }}
-                onClick={() => setView({ kind: "flashcards", setId: s.id })}
-              >
-                <div className="note-card-title">{s.title}</div>
-              </div>
-            ))}
-          </section>
+          <Card title="Flashcard sets" icon={<FlashcardIcon size={16} />}>
+            <div className="recent-notes">
+              {sets.map((s) => (
+                <div
+                  key={s.id}
+                  className="recent-row"
+                  style={{ gridTemplateColumns: "18px 1fr" }}
+                  onClick={() => setView({ kind: "flashcardSet", setId: s.id })}
+                >
+                  <FlashcardIcon size={14} />
+                  <span className="recent-title">{s.title}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
 
         {quizzes.length > 0 && (
-          <section>
-            <h3>Quizzes</h3>
-            {quizzes.map((q) => (
-              <div
-                key={q.id}
-                className="note-card"
-                style={{ marginBottom: 6 }}
-                onClick={() => setView({ kind: "quiz", quizId: q.id })}
-              >
-                <div className="note-card-title">{q.title}</div>
-              </div>
-            ))}
-          </section>
+          <Card title="Quizzes" icon={<QuizIcon size={16} />}>
+            <div className="recent-notes">
+              {quizzes.map((q) => (
+                <div
+                  key={q.id}
+                  className="recent-row"
+                  style={{ gridTemplateColumns: "18px 1fr" }}
+                  onClick={() => setView({ kind: "quiz", quizId: q.id })}
+                >
+                  <QuizIcon size={14} />
+                  <span className="recent-title">{q.title}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
       </aside>
     </>

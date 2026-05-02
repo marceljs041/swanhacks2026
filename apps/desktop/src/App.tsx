@@ -4,18 +4,28 @@ import { Sidebar } from "./components/Sidebar.js";
 import { NotesList } from "./components/NotesList.js";
 import { NoteEditor } from "./components/NoteEditor.js";
 import { Home } from "./components/Home.js";
-import { Study } from "./components/Study.js";
+import { Classes } from "./components/Classes.js";
+import { FlashcardsHub } from "./components/FlashcardsHub.js";
+import { QuizzesHub } from "./components/QuizzesHub.js";
 import { Flashcards } from "./components/Flashcards.js";
 import { Quiz } from "./components/Quiz.js";
 import { Calendar } from "./components/Calendar.js";
 import { Settings } from "./components/Settings.js";
+import { RightPanel } from "./components/RightPanel.js";
 import { useApp } from "./store.js";
 import { desktopSyncDb, desktopTransport } from "./sync/adapter.js";
 import { getDb } from "./db/client.js";
 
 let workerStarted = false;
 
+function customMacTitlebar(): boolean {
+  return (
+    typeof window !== "undefined" && window.studynest?.platform === "darwin"
+  );
+}
+
 export function App() {
+  const macCustomChrome = customMacTitlebar();
   const view = useApp((s) => s.view);
   const setSyncStatus = useApp((s) => s.setSyncStatus);
   const setSidecar = useApp((s) => s.setSidecar);
@@ -50,64 +60,31 @@ export function App() {
     };
   }, [setSyncStatus, setSidecar]);
 
+  // The note editor renders its own right panel (AI actions + summary),
+  // so we suppress the global one for that view.
+  const showRightPanel = view.kind !== "note";
+
   return (
-    <div className="app">
+    <div className={`app${macCustomChrome ? " with-custom-titlebar" : ""}`}>
+      {macCustomChrome && <div className="app-titlebar" aria-hidden />}
       <Sidebar />
-      {view.kind === "home" && <Home />}
-      {view.kind === "notes" && <NotesList />}
-      {view.kind === "note" && <NoteEditor noteId={view.noteId} />}
-      {view.kind === "study" && <Study />}
-      {view.kind === "flashcards" && <Flashcards setId={view.setId} />}
-      {view.kind === "quiz" && <Quiz quizId={view.quizId} />}
-      {view.kind === "calendar" && <Calendar />}
-      {view.kind === "settings" && <Settings />}
-      {(view.kind === "home" ||
-        view.kind === "notes" ||
-        view.kind === "study" ||
-        view.kind === "flashcards" ||
-        view.kind === "quiz" ||
-        view.kind === "calendar" ||
-        view.kind === "settings") && <RightPanelPlaceholder view={view.kind} />}
+      {renderMain(view)}
+      {showRightPanel && <RightPanel />}
     </div>
   );
 }
 
-/**
- * For views that don't render their own right panel (notes/editor renders one),
- * we render a contextual sidebar with sync info and quick actions.
- */
-function RightPanelPlaceholder({ view }: { view: string }) {
-  if (view === "note") return null; // editor renders its own right panel
-  const sidecarLoaded = useApp((s) => s.sidecarLoaded);
-  const sidecarModel = useApp((s) => s.sidecarModel);
-  const status = useApp((s) => s.syncStatus);
-  return (
-    <aside className="right-panel">
-      <section>
-        <h3>Local AI</h3>
-        <div style={{ fontSize: 13 }}>
-          {sidecarLoaded ? (
-            <>
-              <span style={{ color: "var(--success)" }}>● Loaded</span>
-              <div style={{ color: "var(--muted)", marginTop: 4 }}>{sidecarModel}</div>
-            </>
-          ) : (
-            <span style={{ color: "var(--muted)" }}>● Cloud fallback</span>
-          )}
-        </div>
-      </section>
-      <section>
-        <h3>Sync</h3>
-        <div className={`pill ${status}`}>
-          <span className="dot" /> {status}
-        </div>
-      </section>
-      <section>
-        <h3>About</h3>
-        <div style={{ color: "var(--muted)", fontSize: 12 }}>
-          StudyNest is offline-first. Notes save locally and sync when online.
-        </div>
-      </section>
-    </aside>
-  );
+function renderMain(view: ReturnType<typeof useApp.getState>["view"]) {
+  switch (view.kind) {
+    case "home":          return <Home />;
+    case "notes":         return <NotesList />;
+    case "note":          return <NoteEditor noteId={view.noteId} />;
+    case "classes":       return <Classes />;
+    case "flashcards":    return <FlashcardsHub />;
+    case "flashcardSet":  return <Flashcards setId={view.setId} />;
+    case "quizzes":       return <QuizzesHub />;
+    case "quiz":          return <Quiz quizId={view.quizId} />;
+    case "calendar":      return <Calendar />;
+    case "settings":      return <Settings />;
+  }
 }

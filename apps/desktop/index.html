@@ -3,13 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StudyNest</title>
+    <title>Note Goat</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* Initial paint colours — overridden immediately by applyTheme() in main.tsx,
+         but kept in sync with the warm theme so we never flash white. */
+      :root {
+        --color-bg: #FBF5EC;
+        --color-text: #2A2017;
+      }
       html, body, #root { height: 100%; margin: 0; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        background: #0F1117;
-        color: #F5F7FA;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--color-bg);
+        color: var(--color-text);
       }
       * { box-sizing: border-box; }
     </style>
