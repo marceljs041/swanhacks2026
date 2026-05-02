@@ -1,5 +1,25 @@
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { z } from "zod";
+
+/**
+ * `import "dotenv/config"` only reads `.env` from `process.cwd()`. When you run
+ * `pnpm dev:api`, cwd is `apps/api`, so a monorepo-root `.env` is ignored.
+ * Load root first, then `apps/api/.env` so local overrides still work.
+ */
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const apiRoot = path.join(__dirname, "../..");
+const repoRoot = path.join(__dirname, "../../../..");
+
+for (const p of [
+  path.join(repoRoot, ".env"),
+  path.join(repoRoot, ".env.local"),
+  path.join(apiRoot, ".env"),
+  path.join(apiRoot, ".env.local"),
+]) {
+  dotenv.config({ path: p, override: true });
+}
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
