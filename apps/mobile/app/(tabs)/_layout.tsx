@@ -1,10 +1,19 @@
 import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/theme";
+
+const tabIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
+  home: "home",
+  notes: "document-text",
+  capture: "mic",
+  study: "school",
+  calendar: "calendar",
+};
 
 export default function TabsLayout() {
   return (
     <Tabs
-      screenOptions={{
+      screenOptions={({ route }) => ({
         tabBarStyle: {
           backgroundColor: colors.panel,
           borderTopColor: colors.border,
@@ -14,7 +23,11 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.text,
         headerShadowVisible: false,
-      }}
+        tabBarIcon: ({ color, size }) => {
+          const iconName = tabIconMap[route.name] ?? "ellipse";
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+      })}
     >
       <Tabs.Screen name="home" options={{ title: "Home" }} />
       <Tabs.Screen name="notes" options={{ title: "Notes" }} />

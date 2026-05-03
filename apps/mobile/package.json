@@ -5,8 +5,8 @@
   "main": "expo-router/entry",
   "scripts": {
     "dev": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "build": "expo export",
     "typecheck": "tsc --noEmit"
   },
@@ -27,6 +27,7 @@
     "expo-file-system": "~17.0.1",
     "expo-image-picker": "~15.0.7",
     "expo-linking": "~6.3.1",
+    "expo-modules-autolinking": "~1.11.3",
     "expo-router": "~3.5.23",
     "expo-sqlite": "~14.0.6",
     "expo-status-bar": "~1.12.1",
@@ -39,6 +40,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@expo/config-plugins": "8.0.11",
     "@types/react": "~18.2.79",
     "typescript": "^5.5.4"
   }

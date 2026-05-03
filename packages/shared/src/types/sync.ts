@@ -1,4 +1,4 @@
-import type { Iso8601 } from "./entities.js";
+import type { Iso8601 } from "./entities";
 
 export type SyncOperation = "upsert" | "delete";
 

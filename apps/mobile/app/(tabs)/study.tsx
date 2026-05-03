@@ -1,6 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
 import { currentStreak, totalXpToday } from "@/db/repositories";
 import { useApp } from "@/store";
 import { colors, radius, spacing, typography } from "@/theme";
@@ -15,14 +14,12 @@ export default function Study() {
     setXp(x, s);
   }, [setXp]);
 
-  useFocusEffect(
-    useCallback(() => {
-      void refresh();
-    }, [refresh]),
-  );
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+    <ScrollView style={{ backgroundColor: colors.bg, flex: 1 }} contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
       <View style={styles.row}>
         <View style={styles.stat}>
           <Text style={styles.label}>Streak</Text>

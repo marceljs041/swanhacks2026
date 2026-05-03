@@ -43,6 +43,9 @@ pnpm install
 cd apps/api && python -m venv .venv && source .venv/bin/activate && pip install -e .
 uvicorn app.main:app --reload
 
+# Fetch model
+pnpm desktop fetch-model
+
 # Local AI sidecar (separate terminal)
 python -m local_sidecar.main
 
