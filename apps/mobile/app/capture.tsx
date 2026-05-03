@@ -9,7 +9,7 @@ import { saveAttachment } from "@/lib/attachments";
 import { XP_RULES } from "@studynest/shared";
 import { colors, radius, spacing, typography } from "@/theme";
 
-export default function Capture() {
+export default function CaptureScreen() {
   const router = useRouter();
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recState, setRecState] = useState<"idle" | "recording" | "processing">("idle");
@@ -25,7 +25,7 @@ export default function Capture() {
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Permission needed", "StudyNest needs access to your camera/library.");
+      Alert.alert("Permission needed", "Allow camera or photo library access to attach media.");
       return;
     }
     const res = useCamera
@@ -41,7 +41,7 @@ export default function Capture() {
       mimeType: asset.mimeType ?? "image/jpeg",
       fileName: asset.fileName ?? null,
     });
-    router.push(`/notes/${noteId}`);
+    router.replace({ pathname: "/notes/[id]", params: { id: noteId } });
   }
 
   async function pickFile(): Promise<void> {
@@ -56,14 +56,14 @@ export default function Capture() {
       mimeType: asset.mimeType ?? null,
       fileName: asset.name ?? null,
     });
-    router.push(`/notes/${noteId}`);
+    router.replace({ pathname: "/notes/[id]", params: { id: noteId } });
   }
 
   async function startRecording(): Promise<void> {
     try {
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert("Permission needed", "Microphone access is required.");
+        Alert.alert("Permission needed", "Microphone access is required to record.");
         return;
       }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
@@ -92,7 +92,7 @@ export default function Capture() {
         mimeType: "audio/m4a",
         fileName: `audio_${Date.now()}.m4a`,
       });
-      router.push(`/notes/${noteId}`);
+      router.replace({ pathname: "/notes/[id]", params: { id: noteId } });
     } catch (e) {
       Alert.alert("Save failed", (e as Error).message);
     } finally {
@@ -102,41 +102,52 @@ export default function Capture() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
-      <Text style={[typography.h2, { color: colors.text }]}>Capture something</Text>
-      <Text style={{ color: colors.muted }}>
-        Anything you capture saves on this device first and syncs when you're online.
-      </Text>
-
-      <Pressable style={styles.button} onPress={() => void newNote("New note").then((id) => router.push(`/notes/${id}`))}>
-        <Text style={styles.buttonText}>📝 New note</Text>
-      </Pressable>
-
-      <Pressable style={styles.button} onPress={() => void pickImage(true)}>
-        <Text style={styles.buttonText}>📷 Take photo</Text>
-      </Pressable>
-
-      <Pressable style={styles.button} onPress={() => void pickImage(false)}>
-        <Text style={styles.buttonText}>🖼️ Pick image</Text>
-      </Pressable>
-
-      <Pressable
-        style={[styles.button, recState === "recording" && styles.buttonHot]}
-        onPress={() => void (recState === "recording" ? stopRecording() : startRecording())}
-        disabled={recState === "processing"}
-      >
-        <Text style={styles.buttonText}>
-          {recState === "recording"
-            ? "⏹  Stop recording"
-            : recState === "processing"
-              ? "Saving…"
-              : "🎤  Record audio"}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
+    >
+        <Text style={[typography.h2, { color: colors.text }]}>Add to your notebook</Text>
+        <Text style={{ color: colors.muted, lineHeight: 20 }}>
+          Everything is stored on-device first. Sync runs in the background when the API is
+          reachable.
         </Text>
-      </Pressable>
 
-      <Pressable style={styles.button} onPress={() => void pickFile()}>
-        <Text style={styles.buttonText}>📎 Import file</Text>
-      </Pressable>
+        <Pressable
+          style={styles.button}
+          onPress={() =>
+            void newNote("New note").then((id) =>
+              router.replace({ pathname: "/notes/[id]", params: { id } }),
+            )
+          }
+        >
+          <Text style={styles.buttonText}>Blank note</Text>
+        </Pressable>
+
+        <Pressable style={styles.button} onPress={() => void pickImage(true)}>
+          <Text style={styles.buttonText}>Take photo</Text>
+        </Pressable>
+
+        <Pressable style={styles.button} onPress={() => void pickImage(false)}>
+          <Text style={styles.buttonText}>Choose image</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, recState === "recording" && styles.buttonHot]}
+          onPress={() => void (recState === "recording" ? stopRecording() : startRecording())}
+          disabled={recState === "processing"}
+        >
+          <Text style={styles.buttonText}>
+            {recState === "recording"
+              ? "Stop recording"
+              : recState === "processing"
+                ? "Saving…"
+                : "Record audio"}
+          </Text>
+        </Pressable>
+
+        <Pressable style={styles.button} onPress={() => void pickFile()}>
+          <Text style={styles.buttonText}>Import file</Text>
+        </Pressable>
     </ScrollView>
   );
 }

@@ -7,6 +7,7 @@ import {
   type AttachmentType,
   type ClassRow,
   type NoteRow,
+  type StudyPlanRow,
   type StudyTaskRow,
   type SyncOutboxRow,
   type XpEventRow,
@@ -272,6 +273,130 @@ export async function listTasksForRange(fromIso: string, toIso: string): Promise
      and scheduled_for >= ? and scheduled_for < ? order by scheduled_for`,
     [fromIso, toIso],
   )) as StudyTaskRow[];
+}
+
+export async function listTasksForDay(day: Date): Promise<StudyTaskRow[]> {
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return listTasksForRange(start.toISOString(), end.toISOString());
+}
+
+// ---------------- Study plans / tasks (writes) ----------------
+
+export async function upsertStudyPlan(
+  input: Partial<StudyPlanRow> & { title: string },
+  opts: WriteOpts = {},
+): Promise<StudyPlanRow> {
+  const db = await getDb();
+  const ts = nowIso();
+  const row: StudyPlanRow = {
+    id: input.id ?? ulid("plan"),
+    title: input.title,
+    class_id: input.class_id ?? null,
+    exam_date: input.exam_date ?? null,
+    created_at: input.created_at ?? ts,
+    updated_at: ts,
+    deleted_at: input.deleted_at ?? null,
+  };
+  await db.runAsync(
+    `insert into study_plans (id, title, class_id, exam_date, created_at, updated_at, deleted_at)
+     values (?, ?, ?, ?, ?, ?, ?)
+     on conflict(id) do update set
+       title=excluded.title, class_id=excluded.class_id, exam_date=excluded.exam_date,
+       updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
+    [
+      row.id,
+      row.title,
+      row.class_id,
+      row.exam_date,
+      row.created_at,
+      row.updated_at,
+      row.deleted_at,
+    ],
+  );
+  if (!opts.skipOutbox) await enqueue("study_plans", row.id, "upsert", row);
+  return row;
+}
+
+export async function upsertStudyTask(
+  input: Partial<StudyTaskRow> & {
+    title: string;
+    type: StudyTaskRow["type"];
+    scheduled_for: string;
+  },
+  opts: WriteOpts = {},
+): Promise<StudyTaskRow> {
+  const db = await getDb();
+  const ts = nowIso();
+  const row: StudyTaskRow = {
+    id: input.id ?? ulid("tsk"),
+    plan_id: input.plan_id ?? null,
+    note_id: input.note_id ?? null,
+    title: input.title,
+    type: input.type,
+    scheduled_for: input.scheduled_for,
+    duration_minutes: input.duration_minutes ?? 20,
+    completed_at: input.completed_at ?? null,
+    created_at: input.created_at ?? ts,
+    updated_at: ts,
+    deleted_at: input.deleted_at ?? null,
+  };
+  await db.runAsync(
+    `insert into study_tasks
+       (id, plan_id, note_id, title, type, scheduled_for, duration_minutes,
+        completed_at, created_at, updated_at, deleted_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     on conflict(id) do update set
+       plan_id=excluded.plan_id, note_id=excluded.note_id, title=excluded.title,
+       type=excluded.type, scheduled_for=excluded.scheduled_for,
+       duration_minutes=excluded.duration_minutes, completed_at=excluded.completed_at,
+       updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
+    [
+      row.id,
+      row.plan_id,
+      row.note_id,
+      row.title,
+      row.type,
+      row.scheduled_for,
+      row.duration_minutes,
+      row.completed_at,
+      row.created_at,
+      row.updated_at,
+      row.deleted_at,
+    ],
+  );
+  if (!opts.skipOutbox) await enqueue("study_tasks", row.id, "upsert", row);
+  return row;
+}
+
+export async function completeStudyTask(id: string): Promise<void> {
+  const db = await getDb();
+  const ts = nowIso();
+  await db.runAsync(
+    "update study_tasks set completed_at = ?, updated_at = ? where id = ? and deleted_at is null",
+    [ts, ts, id],
+  );
+  const row = (await db.getFirstAsync("select * from study_tasks where id = ?", [id])) as StudyTaskRow | null;
+  if (row) await enqueue("study_tasks", id, "upsert", { ...row, completed_at: ts, updated_at: ts });
+}
+
+export async function latestStudyPlan(): Promise<StudyPlanRow | null> {
+  const db = await getDb();
+  return (
+    ((await db.getFirstAsync(
+      "select * from study_plans where deleted_at is null order by updated_at desc limit 1",
+    )) as StudyPlanRow) ?? null
+  );
+}
+
+export async function totalXpLifetime(): Promise<number> {
+  const db = await getDb();
+  const row = (await db.getFirstAsync(
+    "select coalesce(sum(points), 0) as t from xp_events",
+  )) as { t: number };
+  return row.t;
 }
 
 // ---------------- Outbox helpers ----------------

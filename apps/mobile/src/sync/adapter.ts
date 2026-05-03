@@ -1,6 +1,7 @@
 import { type SyncDb } from "@studynest/sync";
 import {
   CLOUD_API_BASE_URL,
+  type SyncPullRequest,
   type SyncPullResponse,
   type SyncPushRequest,
   type SyncPushResponse,
@@ -14,6 +15,8 @@ import {
   upsertAttachment,
   upsertClass,
   upsertNote,
+  upsertStudyPlan,
+  upsertStudyTask,
 } from "../db/repositories";
 
 export const mobileSyncDb: SyncDb = {
@@ -65,9 +68,13 @@ export const mobileSyncDb: SyncDb = {
       case "attachments":
         await upsertAttachment(p as any, skipOutbox);
         return "applied";
+      case "study_plans":
+        await upsertStudyPlan(p as any, skipOutbox);
+        return "applied";
+      case "study_tasks":
+        await upsertStudyTask(p as any, skipOutbox);
+        return "applied";
       default:
-        // Mobile MVP doesn't store quizzes/flashcards locally — those views
-        // are desktop-first. Sync still lands them server-side via desktop.
         return "skipped";
     }
   },
@@ -94,7 +101,7 @@ export const mobileTransport = {
     if (!res.ok) throw new Error(`push ${res.status}`);
     return (await res.json()) as SyncPushResponse;
   },
-  async pull(req): Promise<SyncPullResponse> {
+  async pull(req: SyncPullRequest): Promise<SyncPullResponse> {
     const res = await fetch(`${CLOUD_API_BASE_URL}/sync/pull`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -63,9 +63,8 @@ export default function Onboarding() {
             Works in class, even without Wi-Fi
           </Text>
           <Text style={{ color: colors.muted, marginTop: spacing.sm, lineHeight: 22 }}>
-            Your notes save on your device first and sync across devices when
-            you're online. The desktop app even runs the AI locally so you can
-            generate flashcards and quizzes offline.
+            Your notes and study plans save on-device first. Summaries and gamified plans work
+            offline; add a native Gemma module when you want full model quality on phone.
           </Text>
           <Pressable
             style={styles.primary}

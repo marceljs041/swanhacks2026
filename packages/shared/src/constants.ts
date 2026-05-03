@@ -13,6 +13,8 @@ export const CLOUD_API_BASE_URL =
 
 export const XP_RULES = {
   createNote: 5,
+  aiSummarize: 8,
+  generateStudyPlan: 20,
   generateFlashcards: 10,
   reviewTenCards: 20,
   completeQuiz: 25,

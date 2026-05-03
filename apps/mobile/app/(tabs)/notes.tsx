@@ -28,17 +28,29 @@ export default function Notes() {
   );
 
   async function newNote(): Promise<void> {
-    const note = await upsertNote({ title: "Untitled" });
-    await recordXp("createNote", XP_RULES.createNote);
-    router.push(`/notes/${note.id}`);
+    try {
+      const note = await upsertNote({ title: "Untitled" });
+      await recordXp("createNote", XP_RULES.createNote);
+      router.push({ pathname: "/notes/[id]", params: { id: note.id } });
+    } catch (e) {
+      console.error("newNote", e);
+    }
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={styles.toolbar}>
+        <Link href="/capture" asChild>
+          <Pressable style={styles.toolBtn}>
+            <Text style={styles.toolBtnText}>Capture</Text>
+          </Pressable>
+        </Link>
+      </View>
       <FlatList
         data={notes}
         keyExtractor={(n) => n.id}
-        contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + spacing.xxl }}
+        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={[typography.h2, { color: colors.text }]}>No notes yet</Text>
@@ -46,19 +58,20 @@ export default function Notes() {
           </View>
         }
         renderItem={({ item }) => (
-          <Link href={`/notes/${item.id}`} asChild>
-            <Pressable style={styles.card}>
-              <Text style={[typography.h2, { color: colors.text }]}>{item.title || "Untitled"}</Text>
-              {item.content_markdown ? (
-                <Text style={{ color: colors.muted, marginTop: 4 }} numberOfLines={2}>
-                  {item.content_markdown}
-                </Text>
-              ) : null}
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
-                {new Date(item.updated_at).toLocaleString()}
+          <Pressable
+            style={styles.card}
+            onPress={() => router.push({ pathname: "/notes/[id]", params: { id: item.id } })}
+          >
+            <Text style={[typography.h2, { color: colors.text }]}>{item.title || "Untitled"}</Text>
+            {item.content_markdown ? (
+              <Text style={{ color: colors.muted, marginTop: 4 }} numberOfLines={2}>
+                {item.content_markdown}
               </Text>
-            </Pressable>
-          </Link>
+            ) : null}
+            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
+              {new Date(item.updated_at).toLocaleString()}
+            </Text>
+          </Pressable>
         )}
       />
       <Pressable style={styles.fab} onPress={() => void newNote()}>
@@ -69,6 +82,21 @@ export default function Notes() {
 }
 
 const styles = StyleSheet.create({
+  toolbar: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  toolBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  toolBtnText: { color: colors.accent, fontWeight: "600", fontSize: 14 },
   card: {
     backgroundColor: colors.panel,
     borderColor: colors.border,

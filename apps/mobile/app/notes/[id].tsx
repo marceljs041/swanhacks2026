@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
@@ -10,26 +10,35 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { Audio } from "expo-av";
-import { getNote, listAttachments, upsertNote } from "@/db/repositories";
+import { getNote, listAttachments, recordXp, upsertNote } from "@/db/repositories";
 import type { AttachmentRow, NoteRow } from "@studynest/shared";
-import { ai } from "@/lib/ai";
+import { XP_RULES } from "@studynest/shared";
+import { summarizeNote } from "@/lib/onDeviceAi";
 import { colors, radius, spacing, typography } from "@/theme";
 import { useApp } from "@/store";
 
 export default function NoteScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const noteId = String(id);
+  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const noteId = Array.isArray(id) ? (id[0] ?? "") : (id ?? "");
+  const navigation = useNavigation();
   const [note, setNote] = useState<NoteRow | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [busy, setBusy] = useState(false);
   const setSyncStatus = useApp((s) => s.setSyncStatus);
+  const aiEnabled = useApp((s) => s.aiEnabled);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: title || "Note" });
+  }, [navigation, title]);
+
   useEffect(() => {
+    if (!noteId) return;
     void (async () => {
       const n = await getNote(noteId);
       setNote(n);
@@ -55,12 +64,13 @@ export default function NoteScreen() {
   }
 
   async function summarize(): Promise<void> {
-    if (!note) return;
+    if (!note || !aiEnabled) return;
     setBusy(true);
     try {
-      const res = await ai.summarize({ note_id: noteId, title, content: body });
+      const res = await summarizeNote({ title, content: body });
       const updated = await upsertNote({ ...note, summary: res.summary });
       setNote(updated);
+      await recordXp("aiSummarize", XP_RULES.aiSummarize);
     } finally {
       setBusy(false);
     }
@@ -71,12 +81,19 @@ export default function NoteScreen() {
     await sound.playAsync();
   }
 
+  if (!noteId) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+        <Text style={{ color: colors.muted }}>Missing note.</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Stack.Screen options={{ title: title || "Note" }} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
         <TextInput
           value={title}
@@ -132,11 +149,17 @@ export default function NoteScreen() {
             <Text style={{ color: colors.text, marginTop: 4 }}>{note.summary}</Text>
           </View>
         )}
-        <Pressable style={styles.aiBtn} onPress={() => void summarize()} disabled={busy}>
-          <Text style={styles.aiBtnText}>{busy ? "Thinking…" : "Summarize with AI"}</Text>
+        <Pressable
+          style={[styles.aiBtn, !aiEnabled && { opacity: 0.5 }]}
+          onPress={() => void summarize()}
+          disabled={busy || !aiEnabled}
+        >
+          <Text style={styles.aiBtnText}>
+            {busy ? "Working…" : aiEnabled ? "Summarize (on-device)" : "AI disabled in Settings"}
+          </Text>
         </Pressable>
         <Text style={{ color: colors.muted, fontSize: 11 }}>
-          Tip: open StudyNest on desktop to generate flashcards and quizzes offline.
+          Summaries run on your phone. Connect a native Gemma module for richer outputs.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -145,13 +168,17 @@ export default function NoteScreen() {
 
 const styles = StyleSheet.create({
   title: {
-    ...typography.display,
+    fontSize: 28,
+    fontWeight: "700",
+    lineHeight: 34,
+    letterSpacing: -0.02,
     color: colors.text,
     paddingVertical: 0,
   },
   body: {
     color: colors.text,
     fontSize: 15,
+    lineHeight: 22,
     minHeight: 240,
     textAlignVertical: "top",
   },
