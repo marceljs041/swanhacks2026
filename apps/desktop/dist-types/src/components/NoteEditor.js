@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, } from "react";
 import { ai } from "../lib/ai.js";
 import { useAudioJobs } from "../lib/audioJobs.js";
+import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
 import { BRAND_AI_URL } from "../lib/brand.js";
 import { describeAgo } from "../lib/relativeTime.js";
 import { NOTE_ICON_LIST, NoteGlyph, getNoteIconComponent, } from "../lib/noteIcons.js";
@@ -36,6 +37,7 @@ export const NoteEditor = ({ noteId }) => {
     const syncStatus = useApp((s) => s.syncStatus);
     const saveTimer = useRef(null);
     const fileInputRef = useRef(null);
+    const markdownImportInputRef = useRef(null);
     const editorRef = useRef(null);
     /** Latest note/title/body for debounced saves (avoids stale closures overwriting title). */
     const noteRef = useRef(null);
@@ -223,6 +225,25 @@ export const NoteEditor = ({ noteId }) => {
         ]);
         e.target.value = "";
     }
+    async function handleMarkdownImport(e) {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file)
+            return;
+        try {
+            const imported = await file.text();
+            const parsedTitle = parseLeadingH1Text(imported);
+            const nextTitle = parsedTitle ?? (stripExt(file.name) || "Untitled");
+            const nextBody = ensureLeadingTitleH1(imported, nextTitle);
+            setTitle(nextTitle);
+            setBody(nextBody);
+            editorRef.current?.setMarkdown(nextBody);
+            persistNote({ title: nextTitle, content_markdown: nextBody });
+        }
+        catch {
+            setError("Failed to import markdown file.");
+        }
+    }
     function removeAttachment(id) {
         setAttachments((prev) => {
             const a = prev.find((x) => x.id === id);
@@ -262,31 +283,33 @@ export const NoteEditor = ({ noteId }) => {
                 setSets(await listFlashcardSets(noteId));
             }
             else if (action === "quiz") {
-                const res = await ai.quiz({ ...ctx, count: 5 });
-                const quiz = await upsertQuiz({
-                    note_id: noteId,
-                    class_id: note.class_id,
-                    title: `${title || "Untitled"} — quiz`,
-                    description: `${res.questions.length} practice questions generated from this note.`,
-                    source_type: "note",
-                    source_ids_json: JSON.stringify([noteId]),
-                    tags_json: JSON.stringify(["Lecture", "Practice"]),
-                });
-                let position = 0;
-                for (const q of res.questions) {
-                    await upsertQuizQuestion({
-                        quiz_id: quiz.id,
-                        type: q.type,
-                        question: q.question,
-                        options_json: q.type === "multiple_choice"
-                            ? JSON.stringify(q.options ?? [])
-                            : null,
-                        correct_answer: String(q.answer ?? ""),
-                        explanation: q.explanation ?? null,
-                        source_note_id: noteId,
-                        position: position++,
+                await enqueueQuizGeneration(`Note quiz: ${title || "Untitled"}`, async () => {
+                    const res = await ai.quiz({ ...ctx, count: 5 });
+                    const quiz = await upsertQuiz({
+                        note_id: noteId,
+                        class_id: note.class_id,
+                        title: `${title || "Untitled"} — quiz`,
+                        description: `${res.questions.length} practice questions generated from this note.`,
+                        source_type: "note",
+                        source_ids_json: JSON.stringify([noteId]),
+                        tags_json: JSON.stringify(["Lecture", "Practice"]),
                     });
-                }
+                    let position = 0;
+                    for (const q of res.questions) {
+                        await upsertQuizQuestion({
+                            quiz_id: quiz.id,
+                            type: q.type,
+                            question: q.question,
+                            options_json: q.type === "multiple_choice"
+                                ? JSON.stringify(q.options ?? [])
+                                : null,
+                            correct_answer: String(q.answer ?? ""),
+                            explanation: q.explanation ?? null,
+                            source_note_id: noteId,
+                            position: position++,
+                        });
+                    }
+                });
                 await recordXp("generateFlashcards", XP_RULES.generateFlashcards);
                 setQuizzes(await listQuizzes(noteId));
             }
@@ -383,6 +406,11 @@ export const NoteEditor = ({ noteId }) => {
     const headerMenu = [
         { label: "Duplicate", icon: _jsx(NoteIcon, { size: 14 }), onClick: () => void duplicateNote() },
         { label: "Copy as markdown", icon: _jsx(UploadIcon, { size: 14 }), onClick: () => void copyToClipboard() },
+        {
+            label: "Import .md",
+            icon: _jsx(UploadIcon, { size: 14 }),
+            onClick: () => markdownImportInputRef.current?.click(),
+        },
         { label: "Export .md", icon: _jsx(UploadIcon, { size: 14 }), onClick: exportMarkdown },
         {
             label: "Add to calendar",
@@ -428,7 +456,7 @@ export const NoteEditor = ({ noteId }) => {
             onClick: () => setAskOpen((v) => !v),
         },
     ];
-    return (_jsxs(_Fragment, { children: [_jsx("a", { href: "#note-editor-body", className: "skip-to-note", children: "Skip to note content" }), _jsxs("main", { className: "main note-main", children: [_jsx(NoteHeader, { note: note, classes: classes, classId: note.class_id, noteTypeLabel: noteTypeLabel, title: title, onTitleChange: onTitleChange, onBack: () => setView({ kind: "notes" }), syncStatus: syncStatus, tags: tags, onAddTag: addTag, onRemoveTag: removeTag, onChangeIcon: (iconKey) => persistNote({ icon: iconKey }), onClassChange: (id) => persistNote({ class_id: id }), menu: headerMenu }), _jsx("p", { id: "note-editor-a11y-desc", className: "visually-hidden", children: "Formatting toolbar is directly above this note. Apply headings, lists, tasks, quotes, links, and images. Type // in the body for link shortcuts (note or audio recording). Drag the corner handle on images to resize." }), _jsx(FormatToolbar, { onAction: (k, v) => editorRef.current?.run(k, v), onLink: openLinkEditor, onMic: () => setRecorderOpen(true), onImage: () => fileInputRef.current?.click() }), _jsx("input", { ref: fileInputRef, type: "file", accept: "image/*", multiple: true, style: { display: "none" }, onChange: handleImagePicked }), attachments.length > 0 && (_jsx(AttachmentStrip, { items: attachments, onRemove: removeAttachment, onInsertAudioLink: (id) => {
+    return (_jsxs(_Fragment, { children: [_jsx("a", { href: "#note-editor-body", className: "skip-to-note", children: "Skip to note content" }), _jsxs("main", { className: "main note-main", children: [_jsx(NoteHeader, { note: note, classes: classes, classId: note.class_id, noteTypeLabel: noteTypeLabel, title: title, onTitleChange: onTitleChange, onBack: () => setView({ kind: "notes" }), syncStatus: syncStatus, tags: tags, onAddTag: addTag, onRemoveTag: removeTag, onChangeIcon: (iconKey) => persistNote({ icon: iconKey }), onClassChange: (id) => persistNote({ class_id: id }), menu: headerMenu }), _jsx("p", { id: "note-editor-a11y-desc", className: "visually-hidden", children: "Formatting toolbar is directly above this note. Apply headings, lists, tasks, quotes, links, and images. Type // in the body for link shortcuts (note or audio recording). Drag the corner handle on images to resize." }), _jsx(FormatToolbar, { onAction: (k, v) => editorRef.current?.run(k, v), onLink: openLinkEditor, onMic: () => setRecorderOpen(true), onImage: () => fileInputRef.current?.click() }), _jsx("input", { ref: fileInputRef, type: "file", accept: "image/*", multiple: true, style: { display: "none" }, onChange: handleImagePicked }), _jsx("input", { ref: markdownImportInputRef, type: "file", accept: ".md,.markdown,text/markdown,text/plain", style: { display: "none" }, onChange: (e) => void handleMarkdownImport(e) }), attachments.length > 0 && (_jsx(AttachmentStrip, { items: attachments, onRemove: removeAttachment, onInsertAudioLink: (id) => {
                             const a = attachments.find((x) => x.id === id);
                             if (!a || a.kind !== "audio")
                                 return;
@@ -910,6 +938,27 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
             return;
         onChange(htmlToMarkdown(el));
     }, [onChange]);
+    const customUndoRef = useRef([]);
+    const customRedoRef = useRef([]);
+    const customUndoArmedRef = useRef(false);
+    function captureCustomUndoSnapshot(el) {
+        const html = el.innerHTML;
+        const last = customUndoRef.current[customUndoRef.current.length - 1];
+        if (last === html)
+            return;
+        customUndoRef.current.push(html);
+        if (customUndoRef.current.length > 100)
+            customUndoRef.current.shift();
+        customRedoRef.current = [];
+        customUndoArmedRef.current = true;
+    }
+    function restoreEditorHtml(el, html) {
+        el.innerHTML = html;
+        normalizeBareImages(el);
+        ensureCaretInside(el);
+        flush();
+        requestAnimationFrame(() => updateSlashMenu());
+    }
     const updateSelectionBubble = useCallback(() => {
         const el = rootRef.current;
         if (!el)
@@ -1167,6 +1216,7 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         if (!el)
             return;
         el.focus();
+        captureCustomUndoSnapshot(el);
         const restored = restoreSavedRangeIfValid(el);
         if (!restored) {
             // No remembered selection — ensure caret is in the editor for typing shortcuts.
@@ -1253,6 +1303,9 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
             const file = item.getAsFile();
             if (!file)
                 return;
+            const root = rootRef.current;
+            if (root)
+                captureCustomUndoSnapshot(root);
             const reader = new FileReader();
             reader.onload = () => {
                 const dataUrl = String(reader.result ?? "");
@@ -1280,6 +1333,7 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         if (!el)
             return;
         el.focus();
+        captureCustomUndoSnapshot(el);
         restoreSavedRangeIfValid(el);
         document.execCommand("styleWithCSS", false, "true");
         const trimmed = url?.trim();
@@ -1344,6 +1398,20 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         }
         flush();
     }, [flush]);
+    const setMarkdown = useCallback((markdown) => {
+        const el = rootRef.current;
+        if (!el)
+            return;
+        el.innerHTML = markdownToHtml(markdown, {
+            audioById: mapFromMaybe(audioUrlByIdRef.current),
+        });
+        normalizeBareImages(el);
+        ensureCaretInside(el);
+        requestAnimationFrame(() => {
+            updateSlashMenu();
+            updateSelectionBubble();
+        });
+    }, [updateSelectionBubble, updateSlashMenu]);
     const restoreSlashCaret = useCallback((el) => {
         el.focus();
         const backup = slashInsertRangeRef.current;
@@ -1371,6 +1439,7 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         if (!el)
             return;
         restoreSlashCaret(el);
+        captureCustomUndoSnapshot(el);
         const label = (linkLabel || "Note").trim() || "Note";
         const href = `note://${noteId}`;
         const html = `<a href="${escapeAttr(href)}" class="note-internal-link">${escapeHtml(label)}</a>`;
@@ -1383,6 +1452,7 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         if (!el)
             return;
         restoreSlashCaret(el);
+        captureCustomUndoSnapshot(el);
         const url = audioUrlByIdRef.current.get(attachmentId) ?? "";
         const clip = clipSec && clipSec.end > clipSec.start
             ? { start: clipSec.start, end: clipSec.end }
@@ -1396,6 +1466,7 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         scrollToHeading,
         applyLink,
         getLinkHrefAtCaret,
+        setMarkdown,
         syncTitleHeading,
         insertAudioLink,
         insertNoteLink,
@@ -1405,6 +1476,7 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         scrollToHeading,
         applyLink,
         getLinkHrefAtCaret,
+        setMarkdown,
         syncTitleHeading,
         insertAudioLink,
         insertNoteLink,
@@ -1541,6 +1613,9 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
         if (!check)
             return;
         e.preventDefault();
+        const root = rootRef.current;
+        if (root)
+            captureCustomUndoSnapshot(root);
         const li = check.closest("li.md-task");
         if (!li)
             return;
@@ -1568,15 +1643,58 @@ const RichEditor = forwardRef(function RichEditor({ initialMarkdown, onChange, o
                     transform: slashMenu.placement === "above"
                         ? "translate(-50%, -100%)"
                         : "translate(-50%, 0)",
-                }, role: "listbox", "aria-label": "Link shortcuts", onMouseDown: (e) => e.preventDefault(), children: [slashMenu.options.map((opt, i) => (_jsx("button", { type: "button", role: "option", "aria-selected": i === slashMenu.active, className: `slash-command-opt${i === slashMenu.active ? " active" : ""}`, onMouseEnter: () => setSlashMenu((prev) => (prev ? { ...prev, active: i } : null)), onClick: () => confirmSlashOption(opt.kind), children: opt.label }, opt.kind))), _jsx("span", { className: "slash-command-hint", children: "\u2191\u2193 Enter \u00B7 Esc" })] })), _jsx("div", { ref: rootRef, className: "rich-editor", contentEditable: true, suppressContentEditableWarning: true, spellCheck: true, role: "textbox", "aria-multiline": "true", "aria-label": "Note body", "aria-describedby": "note-editor-a11y-desc", "data-placeholder": "Start writing your note\u2026", onInput: () => {
+                }, role: "listbox", "aria-label": "Link shortcuts", onMouseDown: (e) => e.preventDefault(), children: [slashMenu.options.map((opt, i) => (_jsx("button", { type: "button", role: "option", "aria-selected": i === slashMenu.active, className: `slash-command-opt${i === slashMenu.active ? " active" : ""}`, onMouseEnter: () => setSlashMenu((prev) => (prev ? { ...prev, active: i } : null)), onClick: () => confirmSlashOption(opt.kind), children: opt.label }, opt.kind))), _jsx("span", { className: "slash-command-hint", children: "\u2191\u2193 Enter \u00B7 Esc" })] })), _jsx("div", { ref: rootRef, className: "rich-editor", contentEditable: true, suppressContentEditableWarning: true, spellCheck: true, role: "textbox", "aria-multiline": "true", "aria-label": "Note body", "aria-describedby": "note-editor-a11y-desc", "data-placeholder": "Start writing your note\u2026", onInput: (e) => {
+                    const native = e.nativeEvent;
+                    const t = native.inputType ?? "";
+                    if (t === "insertText" || t.startsWith("deleteContent")) {
+                        // Let browser-native typing/deletion drive Ctrl+Z normally.
+                        customUndoArmedRef.current = false;
+                    }
                     flush();
                     requestAnimationFrame(() => {
                         updateSlashMenu();
                     });
+                }, onBeforeInput: (e) => {
+                    const el = rootRef.current;
+                    if (!el)
+                        return;
+                    const native = e.nativeEvent;
+                    const t = native.inputType ?? "";
+                    if (t.includes("Paste") ||
+                        t.includes("Drop") ||
+                        t.includes("Replace") ||
+                        t.includes("Format")) {
+                        captureCustomUndoSnapshot(el);
+                    }
                 }, onPaste: onPaste, onKeyDown: (e) => {
                     const el = rootRef.current;
                     if (!el)
                         return;
+                    if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+                        const key = e.key.toLowerCase();
+                        const isUndo = key === "z" && !e.shiftKey;
+                        const isRedo = key === "y" || (key === "z" && e.shiftKey);
+                        if (isUndo && customUndoArmedRef.current && customUndoRef.current.length > 0) {
+                            e.preventDefault();
+                            const prev = customUndoRef.current.pop();
+                            if (!prev)
+                                return;
+                            customRedoRef.current.push(el.innerHTML);
+                            restoreEditorHtml(el, prev);
+                            customUndoArmedRef.current = customUndoRef.current.length > 0;
+                            return;
+                        }
+                        if (isRedo && customRedoRef.current.length > 0) {
+                            e.preventDefault();
+                            const next = customRedoRef.current.pop();
+                            if (!next)
+                                return;
+                            customUndoRef.current.push(el.innerHTML);
+                            restoreEditorHtml(el, next);
+                            customUndoArmedRef.current = true;
+                            return;
+                        }
+                    }
                     const sm = slashMenuRef.current;
                     if (sm && sm.options.length > 0) {
                         if (e.key === "Escape") {
@@ -2298,6 +2416,10 @@ const SyncFooter = ({ status, updatedAt, }) => {
 /* ====================================================================
  * Insights / linking helpers
  * ================================================================== */
+function stripExt(name) {
+    const i = name.lastIndexOf(".");
+    return i > 0 ? name.slice(0, i) : name;
+}
 /**
  * First line of the note is always `# {title}` so the body matches the title field.
  */

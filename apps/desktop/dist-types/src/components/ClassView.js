@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { POINTS_RULES, XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
 import { BRAND_CLASS_HERO_URL } from "../lib/brand.js";
+import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
 import { computeProgress, deriveSubtitle, progressLabel, progressTone, shortDate, toneFor, } from "../lib/classDisplay.js";
 import { classActivityWeek, classAggregates, flashcardSetsForClass, listClasses, listFlashcards, listNotes, nextExamByClass, nextTaskByClass, quizStatsForClass, quizzesForClass, recordRewardPoints, recordXp, tasksForClass, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertClass, upsertQuiz, upsertQuizQuestion, upsertStudyTask, weakTopicsForClass, } from "../db/repositories.js";
 import { useApp } from "../store.js";
@@ -167,33 +168,35 @@ export const ClassView = ({ classId }) => {
         }
         setAiBusy("quiz");
         try {
-            const res = await ai.quiz({
-                note_id: target.id,
-                title: target.title,
-                content: target.content_markdown,
-            });
-            const quiz = await upsertQuiz({
-                title: `${data.cls.name} review`,
-                note_id: target.id,
-                class_id: data.cls.id,
-                description: `Exam review generated from “${target.title}”.`,
-                source_type: "class",
-                source_ids_json: JSON.stringify(data.notes.map((n) => n.id)),
-                tags_json: JSON.stringify(["Exam Review", "Class"]),
-            });
-            let position = 0;
-            for (const q of res.questions) {
-                await upsertQuizQuestion({
-                    quiz_id: quiz.id,
-                    type: q.type,
-                    question: q.question,
-                    options_json: q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
-                    correct_answer: String(q.answer),
-                    explanation: q.explanation ?? null,
-                    source_note_id: target.id,
-                    position: position++,
+            await enqueueQuizGeneration(`Class quiz: ${data.cls.name}`, async () => {
+                const res = await ai.quiz({
+                    note_id: target.id,
+                    title: target.title,
+                    content: target.content_markdown,
                 });
-            }
+                const quiz = await upsertQuiz({
+                    title: `${data.cls.name} review`,
+                    note_id: target.id,
+                    class_id: data.cls.id,
+                    description: `Exam review generated from “${target.title}”.`,
+                    source_type: "class",
+                    source_ids_json: JSON.stringify(data.notes.map((n) => n.id)),
+                    tags_json: JSON.stringify(["Exam Review", "Class"]),
+                });
+                let position = 0;
+                for (const q of res.questions) {
+                    await upsertQuizQuestion({
+                        quiz_id: quiz.id,
+                        type: q.type,
+                        question: q.question,
+                        options_json: q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
+                        correct_answer: String(q.answer),
+                        explanation: q.explanation ?? null,
+                        source_note_id: target.id,
+                        position: position++,
+                    });
+                }
+            });
             setToast(`Exam review created from “${target.title}”.`);
             await reload();
         }

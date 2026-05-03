@@ -15,11 +15,8 @@ import {
   useState,
 } from "react";
 import { ai } from "../lib/ai.js";
-<<<<<<< HEAD
 import { useAudioJobs } from "../lib/audioJobs.js";
-=======
 import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
->>>>>>> bcdfe3f9c04227a1ed23ba6d025dddc304e26240
 import { BRAND_AI_URL } from "../lib/brand.js";
 import { describeAgo } from "../lib/relativeTime.js";
 import {
@@ -3872,6 +3869,11 @@ const SyncFooter: FC<{ status: SyncStatus; updatedAt: string }> = ({
 /* ====================================================================
  * Insights / linking helpers
  * ================================================================== */
+
+function stripExt(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i > 0 ? name.slice(0, i) : name;
+}
 
 /**
  * First line of the note is always `# {title}` so the body matches the title field.
