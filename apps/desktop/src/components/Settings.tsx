@@ -1,8 +1,13 @@
 import type { FC } from "react";
 import { useState } from "react";
-import { CLOUD_API_BASE_URL } from "@studynest/shared";
+import {
+  BADGE_DEFINITIONS,
+  CLOUD_API_BASE_URL,
+  isBadgeId,
+} from "@studynest/shared";
 import { themes, type ThemeName } from "@studynest/ui";
 import { useApp } from "../store.js";
+import { refreshUserBadges } from "../lib/badgesSync.js";
 import { setUserId } from "../db/client.js";
 import { Card } from "./ui/Card.js";
 import { Placeholder } from "./ui/Placeholder.js";
@@ -13,6 +18,10 @@ export const Settings: FC = () => {
   const syncStatus = useApp((s) => s.syncStatus);
   const theme = useApp((s) => s.theme);
   const setTheme = useApp((s) => s.setTheme);
+  const profileBadges = useApp((s) => s.profile.badges);
+
+  const unlocked = new Set(profileBadges.filter(isBadgeId));
+  const earnedCount = BADGE_DEFINITIONS.filter((d) => unlocked.has(d.id)).length;
 
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [enterCode, setEnterCode] = useState("");
@@ -51,6 +60,40 @@ export const Settings: FC = () => {
 
         <div className="settings-grid">
           {/* Theme switcher — proves the modular palette in action. */}
+          <Card title="Badges">
+            <div className="badges-settings-head">
+              <span style={{ fontSize: 13, color: "var(--color-textMuted)" }}>
+                {earnedCount} of {BADGE_DEFINITIONS.length} unlocked — earned from notes, quizzes,
+                flashcards, streaks, and XP.
+              </span>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ flexShrink: 0 }}
+                onClick={() => void refreshUserBadges()}
+              >
+                Refresh progress
+              </button>
+            </div>
+            <ul className="badges-grid" aria-label="All badges">
+              {BADGE_DEFINITIONS.map((b) => {
+                const on = unlocked.has(b.id);
+                return (
+                  <li
+                    key={b.id}
+                    className={`badge-tile ${on ? "badge-tile-unlocked" : "badge-tile-locked"}`}
+                  >
+                    <span className="badge-tile-emoji" aria-hidden>
+                      {on ? b.emoji : "🔒"}
+                    </span>
+                    <span className="badge-tile-title">{b.title}</span>
+                    <span className="badge-tile-desc">{b.description}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+
           <Card title="Appearance">
             <div className="setting-row" style={{ background: "transparent", border: "none", padding: 0 }}>
               <div className="meta">

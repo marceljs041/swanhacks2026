@@ -20,7 +20,8 @@ import type { FC, KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CLOUD_API_BASE_URL } from "@studynest/shared";
 import { useApp } from "../store.js";
-import { firstName, type LearnerRole } from "../lib/profile.js";
+import { firstName, getProfile, type LearnerRole } from "../lib/profile.js";
+import { refreshUserBadges } from "../lib/badgesSync.js";
 import { upsertClass } from "../db/repositories.js";
 import { setUserId } from "../db/client.js";
 import { BRAND_LOGO_URL } from "../lib/brand.js";
@@ -97,10 +98,12 @@ export const Onboarding: FC = () => {
     if (finishing) return;
     setFinishing(true);
     setProfile({
+      ...getProfile(),
       name: name.trim(),
       role,
       onboardedAt: new Date().toISOString(),
     });
+    void refreshUserBadges();
     const wanted = classes.map((c) => c.trim()).filter(Boolean);
     void Promise.all(
       wanted.map((cname, i) =>
@@ -124,10 +127,12 @@ export const Onboarding: FC = () => {
     (userId: string, displayName: string) => {
       void setUserId(userId);
       setProfile({
+        ...getProfile(),
         name: displayName,
         role: null,
         onboardedAt: new Date().toISOString(),
       });
+      void refreshUserBadges();
     },
     [setProfile],
   );

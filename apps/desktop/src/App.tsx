@@ -19,6 +19,7 @@ import { Onboarding } from "./components/Onboarding.js";
 import { useApp } from "./store.js";
 import { desktopSyncDb, desktopTransport } from "./sync/adapter.js";
 import { getDb } from "./db/client.js";
+import { refreshUserBadges } from "./lib/badgesSync.js";
 
 let workerStarted = false;
 
@@ -42,7 +43,9 @@ export function App() {
   useEffect(() => {
     if (workerStarted) return;
     workerStarted = true;
-    void getDb(); // ensure migrations run on first paint
+    void getDb().then(() => {
+      void refreshUserBadges();
+    }); // ensure migrations run on first paint
     const worker = new SyncWorker({
       db: desktopSyncDb,
       transport: desktopTransport,
