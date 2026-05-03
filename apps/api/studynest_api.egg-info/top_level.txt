@@ -1,4 +1,4 @@
 app
 local_sidecar
+node_modules
 scripts
-venv
