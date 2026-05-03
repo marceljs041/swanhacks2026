@@ -1,12 +1,15 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useMemo, useState } from "react";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { decksMissingQuiz, decksNotReviewedSince, flashcardsHubStats, listDeckSummaries, listNotes, recordXp, totalWeakCards, upsertFlashcard, upsertFlashcardSet, } from "../db/repositories.js";
 import { iconFor, toneFor } from "../lib/classDisplay.js";
 import { useApp } from "../store.js";
 import { XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
+import { withViewTransition } from "../lib/viewTransition.js";
 import { DeckDetailRail } from "./DeckDetailRail.js";
-import { BRAND_HERO_URL } from "../lib/brand.js";
+import { HeroSearch } from "./HeroSearch.js";
+import { RightPanel } from "./RightPanel.js";
+import { BRAND_FLASHCARD_HERO_URL } from "../lib/brand.js";
 import { ArrowRightIcon, BookmarkIcon, CalendarIcon, CheckIcon, FlameIcon, FlashcardIcon, HeadphonesIcon, ImportIcon, LightningIcon, PlayIcon, PlusIcon, RestartIcon, SearchIcon, SparklesIcon, StarIcon, TargetIcon, WarningIcon, } from "./icons.js";
 const ZERO_HUB_STATS = {
     dueToday: 0,
@@ -18,6 +21,7 @@ export const FlashcardsHub = () => {
     const setView = useApp((s) => s.setView);
     const setSelectedDeck = useApp((s) => s.setSelectedDeck);
     const selectedDeckId = useApp((s) => s.selectedDeckId);
+    const setFlashcardsDetailPanelOpen = useApp((s) => s.setFlashcardsDetailPanelOpen);
     const classes = useApp((s) => s.classes);
     const [stats, setStats] = useState(ZERO_HUB_STATS);
     const [summaries, setSummaries] = useState([]);
@@ -32,6 +36,9 @@ export const FlashcardsHub = () => {
     const [importOpen, setImportOpen] = useState(false);
     const [generateOpen, setGenerateOpen] = useState(false);
     const [reload, setReload] = useState(0);
+    const selectDeckPreview = useCallback((id) => {
+        withViewTransition(() => setSelectedDeck(id));
+    }, [setSelectedDeck]);
     useEffect(() => {
         void (async () => {
             const [hub, list, weak, stale, miss] = await Promise.all([
@@ -44,12 +51,17 @@ export const FlashcardsHub = () => {
             setStats(hub);
             setSummaries(list);
             setNeedsAttention({ hardCards: weak, staleDecks: stale, needsQuiz: miss });
-            // Auto-select first deck so the rail is never empty on load.
-            if (!selectedDeckId && list.length > 0) {
-                setSelectedDeck(list[0].set.id);
+            const prev = useApp.getState().selectedDeckId;
+            if (prev && list.some((s) => s.set.id === prev)) {
+                return;
             }
+            setSelectedDeck(null);
         })();
-    }, [reload, selectedDeckId, setSelectedDeck]);
+    }, [reload, setSelectedDeck]);
+    useEffect(() => {
+        setFlashcardsDetailPanelOpen(!!selectedDeckId);
+        return () => setFlashcardsDetailPanelOpen(false);
+    }, [selectedDeckId, setFlashcardsDetailPanelOpen]);
     const filteredSummaries = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q)
@@ -59,8 +71,10 @@ export const FlashcardsHub = () => {
             false);
     }, [search, summaries]);
     function startReview(setId, mode = "due") {
-        setSelectedDeck(setId);
-        setView({ kind: "flashcardSet", setId, mode });
+        withViewTransition(() => {
+            setSelectedDeck(setId);
+            setView({ kind: "flashcardSet", setId, mode });
+        });
     }
     function startWeakReview() {
         const target = summaries.find((s) => s.stats.weak > 0) ?? summaries[0];
@@ -85,38 +99,42 @@ export const FlashcardsHub = () => {
             return next;
         });
     }
-    return (_jsxs("main", { className: "main", children: [_jsx("div", { className: "topbar", children: _jsxs("label", { className: "search", children: [_jsx("span", { className: "search-icon", children: _jsx(SearchIcon, { size: 16 }) }), _jsx("input", { type: "search", placeholder: "Search decks, cards, or topics...", "aria-label": "Search flashcards", value: search, onChange: (e) => setSearch(e.target.value) })] }) }), _jsxs("div", { className: "main-inner flashcards-shell", children: [_jsxs("div", { className: "flashcards-center", children: [_jsxs("section", { className: "fh-hero", children: [_jsxs("div", { className: "fh-hero-text", children: [_jsx("h1", { children: "Flashcards" }), _jsx("p", { children: "Review smarter with spaced repetition, decks, and daily goals." })] }), _jsx("div", { className: "fh-hero-illustration", "aria-hidden": true, children: _jsx("img", { src: BRAND_HERO_URL, alt: "" }) })] }), _jsxs("section", { className: "fh-stat-grid", children: [_jsx(FhStat, { icon: _jsx(CalendarIcon, { size: 18 }), tone: "peach", value: stats.dueToday, label: "Due Today" }), _jsx(FhStat, { icon: _jsx(FlashcardIcon, { size: 18 }), tone: "sage", value: stats.totalDecks, label: "Total Decks" }), _jsx(FhStat, { icon: _jsx(StarIcon, { size: 18 }), tone: "lilac", value: stats.mastered, label: "Mastered" }), _jsx(FhStat, { icon: _jsx(FlameIcon, { size: 18 }), tone: "amber", value: stats.studyStreakDays, label: stats.studyStreakDays === 1 ? "day Study Streak" : "days Study Streak", compact: true })] }), _jsxs("section", { className: "fh-daily", role: "region", "aria-label": "Daily review", children: [_jsx("span", { className: "fh-daily-icon", children: _jsx(CalendarIcon, { size: 22 }) }), _jsxs("div", { className: "fh-daily-text", children: [_jsx("span", { className: "fh-daily-title", children: "Daily Review" }), _jsxs("span", { className: "fh-daily-sub", children: [_jsxs("strong", { children: [stats.dueToday, " cards due today"] }), _jsx("span", { className: "fh-daily-divider", "aria-hidden": true, children: "\u00B7" }), _jsxs("span", { className: "fh-daily-time", children: ["~", Math.max(1, Math.round(stats.dueToday * 1)), " min"] }), _jsx("span", { className: "fh-daily-divider", "aria-hidden": true, children: "\u00B7" }), _jsx("span", { children: "Keep your streak alive" })] })] }), _jsxs("button", { type: "button", className: "fh-daily-cta", onClick: startDailyReview, disabled: stats.dueToday === 0 || summaries.length === 0, children: [_jsx(PlayIcon, { size: 14 }), _jsx("span", { children: "Start Review" })] })] }), _jsxs("section", { className: "fh-action-chips", "aria-label": "Deck actions", children: [_jsx(ActionChip, { icon: _jsx(PlusIcon, { size: 16 }), label: "Create Deck", tone: "peach", onClick: () => setCreateOpen(true) }), _jsx(ActionChip, { icon: _jsx(SparklesIcon, { size: 16 }), label: "Generate Flashcards", tone: "sage", onClick: () => setGenerateOpen(true) }), _jsx(ActionChip, { icon: _jsx(ImportIcon, { size: 16 }), label: "Import Cards", tone: "sky", onClick: () => setImportOpen(true) }), _jsx(ActionChip, { icon: _jsx(TargetIcon, { size: 16 }), label: "Review Weak Cards", tone: "rose", onClick: startWeakReview })] }), _jsx("section", { className: "fh-deck-grid", "aria-label": "Decks", children: filteredSummaries.length === 0 ? (_jsxs("div", { className: "fh-empty", children: [_jsx(FlashcardIcon, { size: 28 }), _jsx("p", { children: summaries.length === 0
-                                                ? "You don't have any decks yet — generate one from a note or import from CSV."
-                                                : "No decks match that search." })] })) : (filteredSummaries.map((s) => (_jsx(DeckCard, { summary: s, classes: classes, active: selectedDeckId === s.set.id, isFavorite: favorites.has(s.set.id), onOpen: () => setSelectedDeck(s.set.id), onStudy: () => startReview(s.set.id, "due"), onToggleFavorite: () => toggleFavorite(s.set.id) }, s.set.id)))) }), _jsxs("section", { className: "fh-bottom", children: [_jsxs("div", { className: "fh-bottom-card", children: [_jsx("header", { className: "fh-bottom-head", children: _jsx("h3", { children: "Review Modes" }) }), _jsxs("div", { className: "fh-mode-grid", children: [_jsx(ModeTile, { icon: _jsx(CalendarIcon, { size: 18 }), tone: "peach", title: "Due Cards", value: stats.dueToday, caption: "Ready to review", onClick: () => {
-                                                            if (selectedDeckId)
-                                                                startReview(selectedDeckId, "due");
-                                                            else
-                                                                startDailyReview();
-                                                        } }), _jsx(ModeTile, { icon: _jsx(LightningIcon, { size: 18 }), tone: "lilac", title: "Cram Mode", value: summaries.reduce((acc, s) => acc + s.stats.total, 0), caption: "Study everything", onClick: () => {
-                                                            if (selectedDeckId)
-                                                                startReview(selectedDeckId, "cram");
-                                                            else if (summaries[0])
-                                                                startReview(summaries[0].set.id, "cram");
-                                                        } }), _jsx(ModeTile, { icon: _jsx(TargetIcon, { size: 18 }), tone: "rose", title: "Weak Cards", value: needsAttention.hardCards, caption: "Focus on gaps", onClick: startWeakReview }), _jsx(ModeTile, { icon: _jsx(HeadphonesIcon, { size: 18 }), tone: "sage", title: "Audio Review", value: stats.dueToday, caption: "Listen & learn", onClick: () => {
-                                                            if (selectedDeckId)
-                                                                startReview(selectedDeckId, "audio");
-                                                            else if (summaries[0])
-                                                                startReview(summaries[0].set.id, "audio");
-                                                        } })] })] }), _jsxs("div", { className: "fh-bottom-card", children: [_jsx("header", { className: "fh-bottom-head", children: _jsx("h3", { children: "Needs Attention" }) }), _jsxs("ul", { className: "fh-attention", children: [_jsxs("li", { className: "fh-attention-row tone-rose", onClick: startWeakReview, children: [_jsx("span", { className: "fh-attention-icon", children: _jsx(WarningIcon, { size: 14 }) }), _jsxs("span", { className: "fh-attention-text", children: [_jsx("strong", { children: needsAttention.hardCards }), " cards marked hard"] }), _jsx(ArrowRightIcon, { size: 12 })] }), _jsxs("li", { className: "fh-attention-row tone-amber", children: [_jsx("span", { className: "fh-attention-icon", children: _jsx(RestartIcon, { size: 14 }) }), _jsxs("span", { className: "fh-attention-text", children: [_jsx("strong", { children: needsAttention.staleDecks }), " decks haven't been reviewed in 5 days"] }), _jsx(ArrowRightIcon, { size: 12 })] }), _jsxs("li", { className: "fh-attention-row tone-sage", onClick: () => setView({ kind: "quizzes" }), children: [_jsx("span", { className: "fh-attention-icon", children: _jsx(CheckIcon, { size: 14 }) }), _jsxs("span", { className: "fh-attention-text", children: [_jsx("strong", { children: needsAttention.needsQuiz }), " decks ready for quiz generation"] }), _jsx(ArrowRightIcon, { size: 12 })] })] })] })] })] }), _jsx(DeckDetailRail, { variant: "hub", summaries: summaries, isFavorite: selectedDeckId ? favorites.has(selectedDeckId) : false, onToggleFavorite: () => {
-                            if (selectedDeckId)
-                                toggleFavorite(selectedDeckId);
-                        } })] }), createOpen && (_jsx(CreateDeckModal, { onClose: () => setCreateOpen(false), onCreated: (deck) => {
-                    setSelectedDeck(deck.id);
-                    setCreateOpen(false);
-                    setReload((n) => n + 1);
-                } })), importOpen && (_jsx(ImportCardsModal, { summaries: summaries, onClose: () => setImportOpen(false), onImported: () => {
-                    setImportOpen(false);
-                    setReload((n) => n + 1);
-                } })), generateOpen && (_jsx(GenerateFlashcardsModal, { onClose: () => setGenerateOpen(false), onGenerated: (setId) => {
-                    setSelectedDeck(setId);
-                    setGenerateOpen(false);
-                    setReload((n) => n + 1);
-                } }))] }));
+    return (_jsxs(_Fragment, { children: [_jsxs("main", { className: "main", children: [_jsx("div", { className: "main-inner", children: _jsxs("div", { className: "flashcards-center", children: [_jsxs("section", { className: "hero", children: [_jsxs("div", { className: "hero-main", children: [_jsx(HeroSearch, {}), _jsxs("div", { className: "hero-greeting", children: [_jsx("h1", { className: "hero-headline", children: "Flashcards" }), _jsx("p", { children: "Review smarter with spaced repetition, decks, and daily goals." })] })] }), _jsx("div", { className: "hero-illustration", "aria-hidden": true, children: _jsx("img", { className: "hero-illustration-img", src: BRAND_FLASHCARD_HERO_URL, alt: "", decoding: "async" }) })] }), _jsxs("section", { className: "fh-stat-grid", children: [_jsx(FhStat, { icon: _jsx(CalendarIcon, { size: 18 }), tone: "peach", value: stats.dueToday, label: "Due Today" }), _jsx(FhStat, { icon: _jsx(FlashcardIcon, { size: 18 }), tone: "sage", value: stats.totalDecks, label: "Total Decks" }), _jsx(FhStat, { icon: _jsx(StarIcon, { size: 18 }), tone: "lilac", value: stats.mastered, label: "Mastered" }), _jsx(FhStat, { icon: _jsx(FlameIcon, { size: 18 }), tone: "amber", value: stats.studyStreakDays, label: stats.studyStreakDays === 1 ? "day Study Streak" : "days Study Streak", compact: true })] }), _jsxs("section", { className: "fh-daily", role: "region", "aria-label": "Daily review", children: [_jsx("span", { className: "fh-daily-icon", children: _jsx(CalendarIcon, { size: 22 }) }), _jsxs("div", { className: "fh-daily-text", children: [_jsx("span", { className: "fh-daily-title", children: "Daily Review" }), _jsxs("span", { className: "fh-daily-sub", children: [_jsxs("strong", { children: [stats.dueToday, " cards due today"] }), _jsx("span", { className: "fh-daily-divider", "aria-hidden": true, children: "\u00B7" }), _jsxs("span", { className: "fh-daily-time", children: ["~", Math.max(1, Math.round(stats.dueToday * 1)), " min"] }), _jsx("span", { className: "fh-daily-divider", "aria-hidden": true, children: "\u00B7" }), _jsx("span", { children: "Keep your streak alive" })] })] }), _jsxs("button", { type: "button", className: "fh-daily-cta", onClick: startDailyReview, disabled: stats.dueToday === 0 || summaries.length === 0, children: [_jsx(PlayIcon, { size: 14 }), _jsx("span", { children: "Start Review" })] })] }), _jsx("div", { className: "search-wrap fh-deck-filter", children: _jsxs("label", { className: "search", children: [_jsx("span", { className: "search-icon", children: _jsx(SearchIcon, { size: 16 }) }), _jsx("input", { type: "search", placeholder: "Filter decks by title or note\u2026", "aria-label": "Filter decks", value: search, onChange: (e) => setSearch(e.target.value) })] }) }), _jsxs("section", { className: "fh-action-chips", "aria-label": "Deck actions", children: [_jsx(ActionChip, { icon: _jsx(PlusIcon, { size: 16 }), label: "Create Deck", tone: "peach", onClick: () => setCreateOpen(true) }), _jsx(ActionChip, { icon: _jsx(SparklesIcon, { size: 16 }), label: "Generate Flashcards", tone: "sage", onClick: () => setGenerateOpen(true) }), _jsx(ActionChip, { icon: _jsx(ImportIcon, { size: 16 }), label: "Import Cards", tone: "sky", onClick: () => setImportOpen(true) }), _jsx(ActionChip, { icon: _jsx(TargetIcon, { size: 16 }), label: "Review Weak Cards", tone: "rose", onClick: startWeakReview })] }), _jsx("section", { className: "fh-deck-grid", "aria-label": "Decks", children: filteredSummaries.length === 0 ? (_jsxs("div", { className: "fh-empty", children: [_jsx(FlashcardIcon, { size: 28 }), _jsx("p", { children: summaries.length === 0
+                                                    ? "You don't have any decks yet — generate one from a note or import from CSV."
+                                                    : "No decks match that search." })] })) : (filteredSummaries.map((s) => (_jsx(DeckCard, { summary: s, classes: classes, active: selectedDeckId === s.set.id, isFavorite: favorites.has(s.set.id), onOpen: () => {
+                                            if (selectedDeckId === s.set.id)
+                                                selectDeckPreview(null);
+                                            else
+                                                selectDeckPreview(s.set.id);
+                                        }, onStudy: () => startReview(s.set.id, "due"), onToggleFavorite: () => toggleFavorite(s.set.id) }, s.set.id)))) }), _jsxs("section", { className: "fh-bottom", children: [_jsxs("div", { className: "fh-bottom-card", children: [_jsx("header", { className: "fh-bottom-head", children: _jsx("h3", { children: "Review Modes" }) }), _jsxs("div", { className: "fh-mode-grid", children: [_jsx(ModeTile, { icon: _jsx(CalendarIcon, { size: 18 }), tone: "peach", title: "Due Cards", value: stats.dueToday, caption: "Ready to review", onClick: () => {
+                                                                if (selectedDeckId)
+                                                                    startReview(selectedDeckId, "due");
+                                                                else
+                                                                    startDailyReview();
+                                                            } }), _jsx(ModeTile, { icon: _jsx(LightningIcon, { size: 18 }), tone: "lilac", title: "Cram Mode", value: summaries.reduce((acc, s) => acc + s.stats.total, 0), caption: "Study everything", onClick: () => {
+                                                                if (selectedDeckId)
+                                                                    startReview(selectedDeckId, "cram");
+                                                                else if (summaries[0])
+                                                                    startReview(summaries[0].set.id, "cram");
+                                                            } }), _jsx(ModeTile, { icon: _jsx(TargetIcon, { size: 18 }), tone: "rose", title: "Weak Cards", value: needsAttention.hardCards, caption: "Focus on gaps", onClick: startWeakReview }), _jsx(ModeTile, { icon: _jsx(HeadphonesIcon, { size: 18 }), tone: "sage", title: "Audio Review", value: stats.dueToday, caption: "Listen & learn", onClick: () => {
+                                                                if (selectedDeckId)
+                                                                    startReview(selectedDeckId, "audio");
+                                                                else if (summaries[0])
+                                                                    startReview(summaries[0].set.id, "audio");
+                                                            } })] })] }), _jsxs("div", { className: "fh-bottom-card", children: [_jsx("header", { className: "fh-bottom-head", children: _jsx("h3", { children: "Needs Attention" }) }), _jsxs("ul", { className: "fh-attention", children: [_jsxs("li", { className: "fh-attention-row tone-rose", onClick: startWeakReview, children: [_jsx("span", { className: "fh-attention-icon", children: _jsx(WarningIcon, { size: 14 }) }), _jsxs("span", { className: "fh-attention-text", children: [_jsx("strong", { children: needsAttention.hardCards }), " cards marked hard"] }), _jsx(ArrowRightIcon, { size: 12 })] }), _jsxs("li", { className: "fh-attention-row tone-amber", children: [_jsx("span", { className: "fh-attention-icon", children: _jsx(RestartIcon, { size: 14 }) }), _jsxs("span", { className: "fh-attention-text", children: [_jsx("strong", { children: needsAttention.staleDecks }), " decks haven't been reviewed in 5 days"] }), _jsx(ArrowRightIcon, { size: 12 })] }), _jsxs("li", { className: "fh-attention-row tone-sage", onClick: () => setView({ kind: "quizzes" }), children: [_jsx("span", { className: "fh-attention-icon", children: _jsx(CheckIcon, { size: 14 }) }), _jsxs("span", { className: "fh-attention-text", children: [_jsx("strong", { children: needsAttention.needsQuiz }), " decks ready for quiz generation"] }), _jsx(ArrowRightIcon, { size: 12 })] })] })] })] })] }) }), createOpen && (_jsx(CreateDeckModal, { onClose: () => setCreateOpen(false), onCreated: (deck) => {
+                            setSelectedDeck(deck.id);
+                            setCreateOpen(false);
+                            setReload((n) => n + 1);
+                        } })), importOpen && (_jsx(ImportCardsModal, { summaries: summaries, onClose: () => setImportOpen(false), onImported: () => {
+                            setImportOpen(false);
+                            setReload((n) => n + 1);
+                        } })), generateOpen && (_jsx(GenerateFlashcardsModal, { onClose: () => setGenerateOpen(false), onGenerated: (setId) => {
+                            setSelectedDeck(setId);
+                            setGenerateOpen(false);
+                            setReload((n) => n + 1);
+                        } }))] }), selectedDeckId ? (_jsx(DeckDetailRail, { variant: "hub", isFavorite: favorites.has(selectedDeckId), onToggleFavorite: () => {
+                    toggleFavorite(selectedDeckId);
+                } })) : (_jsx(RightPanel, { flashcardsSwap: true }))] }));
 };
 const FhStat = ({ icon, tone, value, label, compact }) => (_jsxs("div", { className: `fh-stat tone-${tone}${compact ? " compact" : ""}`, children: [_jsx("span", { className: "fh-stat-icon", children: icon }), _jsxs("div", { className: "fh-stat-body", children: [_jsx("span", { className: "fh-stat-value", children: value.toLocaleString() }), _jsx("span", { className: "fh-stat-label", children: label })] })] }));
 const ActionChip = ({ icon, label, tone, onClick }) => (_jsxs("button", { type: "button", className: `fh-chip tone-${tone}`, onClick: onClick, children: [_jsx("span", { className: "fh-chip-icon", children: icon }), _jsx("span", { children: label })] }));

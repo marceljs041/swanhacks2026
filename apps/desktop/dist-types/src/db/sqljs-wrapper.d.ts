@@ -6,7 +6,7 @@ export interface CompatibleDb {
     prepare(sql: string): CompatibleStatement;
     exec(sql: string): void;
     pragma(sql: string): void;
-    transaction<T extends (...args: unknown[]) => void>(fn: T): T;
+    transaction<T extends (...args: any[]) => void>(fn: T): T;
 }
 export interface CompatibleStatement {
     run(...params: unknown[]): void;

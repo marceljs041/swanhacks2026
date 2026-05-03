@@ -2,7 +2,8 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CLOUD_API_BASE_URL } from "@studynest/shared";
 import { useApp } from "../store.js";
-import { firstName } from "../lib/profile.js";
+import { firstName, getProfile } from "../lib/profile.js";
+import { refreshUserBadges } from "../lib/badgesSync.js";
 import { upsertClass } from "../db/repositories.js";
 import { setUserId } from "../db/client.js";
 import { BRAND_LOGO_URL } from "../lib/brand.js";
@@ -61,10 +62,12 @@ export const Onboarding = () => {
             return;
         setFinishing(true);
         setProfile({
+            ...getProfile(),
             name: name.trim(),
             role,
             onboardedAt: new Date().toISOString(),
         });
+        void refreshUserBadges();
         const wanted = classes.map((c) => c.trim()).filter(Boolean);
         void Promise.all(wanted.map((cname, i) => upsertClass({
             name: cname,
@@ -82,10 +85,12 @@ export const Onboarding = () => {
     const finishReturning = useCallback((userId, displayName) => {
         void setUserId(userId);
         setProfile({
+            ...getProfile(),
             name: displayName,
             role: null,
             onboardedAt: new Date().toISOString(),
         });
+        void refreshUserBadges();
     }, [setProfile]);
     return (_jsxs("div", { className: "onboarding-shell", children: [_jsx(BackgroundOrbs, {}), _jsx("div", { className: "ob-logo-bg", "aria-hidden": true, children: _jsx("img", { src: BRAND_LOGO_URL, alt: "" }) }), _jsx("div", { className: "onboarding-stage", children: _jsxs("div", { className: `onboarding-step ${direction === "forward" ? "enter-forward" : "enter-backward"}`, children: [step === "intro" && (_jsx(IntroStep, { onPickNew: () => {
                                 setTrack("new");

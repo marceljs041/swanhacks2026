@@ -16,6 +16,8 @@ export declare const ai: {
         title: string;
         content: string;
         count?: number;
+        /** Restricts question types — server may ignore unknown values. */
+        types?: Array<"multiple_choice" | "true_false" | "short_answer">;
     }): Promise<QuizResponse>;
     studyPlan(args: {
         goal: string;

@@ -7,6 +7,7 @@ import {
   listNotes,
   listTasksForRange,
   quizStats,
+  recordRewardPoints,
   recordXp,
   totalXpToday,
   upsertAttachment,
@@ -22,7 +23,7 @@ import { BRAND_HERO_URL } from "../lib/brand.js";
 import { firstName } from "../lib/profile.js";
 import { refreshUserBadges } from "../lib/badgesSync.js";
 import { getGreeting } from "../lib/greeting.js";
-import { XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, XP_RULES } from "@studynest/shared";
 import type { ClassRow, StudyTaskRow } from "@studynest/shared";
 import {
   ArrowRightIcon,
@@ -485,6 +486,7 @@ const TodaysPlanCard: FC<{ tasks: StudyTaskRow[]; onChange: () => void }> = ({
     });
     if (!wasComplete) {
       await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+      await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
     }
     onChange();
   }

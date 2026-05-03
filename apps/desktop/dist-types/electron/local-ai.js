@@ -41,13 +41,22 @@ const GEMMA_FILENAME = "gemma-3-4b-it-q4_k_m.gguf";
  * then Electron userData (packaged / manual install).
  */
 function resolveModelPath() {
-    const repoRoot = join(resolveApiDir(), "..", "..");
     const envPath = process.env.STUDYNEST_GEMMA_MODEL_PATH?.trim();
     if (envPath) {
         if (isAbsolute(envPath))
             return envPath;
-        return resolve(repoRoot, envPath);
+        const base = app.isPackaged
+            ? process.resourcesPath
+            : join(resolveApiDir(), "..", "..");
+        return resolve(base, envPath);
     }
+    if (app.isPackaged) {
+        const bundled = join(process.resourcesPath, "app-data", "models", GEMMA_FILENAME);
+        if (existsSync(bundled))
+            return bundled;
+        return join(app.getPath("userData"), "models", GEMMA_FILENAME);
+    }
+    const repoRoot = join(resolveApiDir(), "..", "..");
     const repoDefault = join(repoRoot, "app-data", "models", GEMMA_FILENAME);
     if (existsSync(repoDefault))
         return repoDefault;
@@ -65,18 +74,19 @@ export function startSidecar(opts = {}) {
         STUDYNEST_GEMMA_MODEL_PATH: modelPath,
         PYTHONPATH: apiDir,
     };
-    proc = spawn(python, ["-m", "local_sidecar.main"], {
+    const child = spawn(python, ["-m", "local_sidecar.main"], {
         cwd: apiDir,
         env,
         stdio: ["ignore", "pipe", "pipe"],
     });
-    proc.stdout?.on("data", (chunk) => {
+    proc = child;
+    child.stdout?.on("data", (chunk) => {
         process.stdout.write(`[sidecar] ${chunk}`);
     });
-    proc.stderr?.on("data", (chunk) => {
+    child.stderr?.on("data", (chunk) => {
         process.stderr.write(`[sidecar] ${chunk}`);
     });
-    proc.on("exit", (code) => {
+    child.on("exit", (code) => {
         console.log(`[sidecar] exited with code ${code}`);
         proc = null;
     });

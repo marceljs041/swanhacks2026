@@ -1,10 +1,10 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
-import { BRAND_HERO_URL } from "../lib/brand.js";
+import { BRAND_CLASS_HERO_URL } from "../lib/brand.js";
 import { computeProgress, deriveSubtitle, progressLabel, progressTone, shortDate, toneFor, } from "../lib/classDisplay.js";
-import { classActivityWeek, classAggregates, flashcardSetsForClass, listClasses, listFlashcards, listNotes, nextExamByClass, nextTaskByClass, quizStatsForClass, quizzesForClass, recordXp, tasksForClass, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertClass, upsertQuiz, upsertQuizQuestion, upsertStudyTask, weakTopicsForClass, } from "../db/repositories.js";
+import { classActivityWeek, classAggregates, flashcardSetsForClass, listClasses, listFlashcards, listNotes, nextExamByClass, nextTaskByClass, quizStatsForClass, quizzesForClass, recordRewardPoints, recordXp, tasksForClass, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertClass, upsertQuiz, upsertQuizQuestion, upsertStudyTask, weakTopicsForClass, } from "../db/repositories.js";
 import { useApp } from "../store.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { ArrowLeftIcon, CalendarIcon, CheckIcon, ChevRightIcon, ClockIcon, FileIcon, FlashcardIcon, GraduationCapIcon, PlusIcon, QuizIcon, SparklesIcon, } from "./icons.js";
@@ -175,7 +175,13 @@ export const ClassView = ({ classId }) => {
             const quiz = await upsertQuiz({
                 title: `${data.cls.name} review`,
                 note_id: target.id,
+                class_id: data.cls.id,
+                description: `Exam review generated from “${target.title}”.`,
+                source_type: "class",
+                source_ids_json: JSON.stringify(data.notes.map((n) => n.id)),
+                tags_json: JSON.stringify(["Exam Review", "Class"]),
             });
+            let position = 0;
             for (const q of res.questions) {
                 await upsertQuizQuestion({
                     quiz_id: quiz.id,
@@ -184,6 +190,8 @@ export const ClassView = ({ classId }) => {
                     options_json: q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
                     correct_answer: String(q.answer),
                     explanation: q.explanation ?? null,
+                    source_note_id: target.id,
+                    position: position++,
                 });
             }
             setToast(`Exam review created from “${target.title}”.`);
@@ -199,8 +207,17 @@ export const ClassView = ({ classId }) => {
     const runStudyPlan = useCallback(() => {
         if (!data)
             return;
+        // Anchor the focus filter so the resulting study plan and the
+        // existing right-panel widgets (Today's Plan, Upcoming Deadlines)
+        // are scoped to this class.
         setFocusedClass(classId);
         setView({ kind: "calendar" });
+        // Defer opening the generator until after the calendar mounts
+        // so the modal renders on top of the new view rather than the
+        // current ClassView.
+        queueMicrotask(() => {
+            useApp.getState().setCalendarPlanGeneratorOpen(true);
+        });
     }, [classId, data, setFocusedClass, setView]);
     const runRegenerateOverview = useCallback(async () => {
         if (!data)
@@ -286,6 +303,7 @@ export const ClassView = ({ classId }) => {
                             });
                             if (!t.completed_at) {
                                 await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+                                await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
                             }
                             await reload();
                         } })), tab === "notes" && (_jsx(NotesTab, { cls: data.cls, notes: data.notes, onOpen: openNote, onNew: () => void newNote() })), tab === "flashcards" && (_jsx(FlashcardsTab, { cls: data.cls, sets: data.flashcardSets, onOpen: (setId) => setView({ kind: "flashcardSet", setId }), onMake: () => void runMakeFlashcards(), busy: aiBusy === "flashcards" })), tab === "quizzes" && (_jsx(QuizzesTab, { cls: data.cls, quizzes: data.quizzes, stats: data.quizStats, onOpen: (quizId) => setView({ kind: "quiz", quizId }), onMake: () => void runMakeQuiz(), busy: aiBusy === "quiz" })), tab === "studyPlan" && (_jsx(StudyPlanTab, { cls: data.cls, tasks: data.upcoming, onCheck: async (t) => {
@@ -295,6 +313,7 @@ export const ClassView = ({ classId }) => {
                             });
                             if (!t.completed_at) {
                                 await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+                                await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
                             }
                             await reload();
                         }, onPlan: runStudyPlan }))] }), toast && (_jsx("div", { className: "classes-toast", role: "status", "aria-live": "polite", children: toast }))] }));
@@ -306,7 +325,7 @@ const ClassHero = ({ cls, tone, subtitle, examInDays, progressLabel, progressTon
     return (_jsxs("section", { className: "hero", children: [_jsxs("div", { className: "hero-main", children: [_jsx(HeroSearch, {}), _jsx(Breadcrumbs, { trail: [
                             { label: "Classes", onClick: onBack },
                             { label: cls.name },
-                        ] }), _jsxs("div", { className: "hero-greeting classview-hero-text", children: [_jsx("h1", { className: "hero-headline", children: cls.name }), _jsx("p", { children: subtitle ?? "Course" }), _jsxs("div", { className: "classview-pill-row", children: [_jsx("span", { className: `classview-pill tone-${tone}`, children: "Lecture" }), examInDays !== null && (_jsx("span", { className: `classview-pill tone-${examInDays <= 3 ? "danger" : "amber"}`, children: examInDays <= 0 ? "Exam today" : `Exam in ${examInDays}d` })), _jsx("span", { className: `classview-pill tone-${progressTone === "warning" ? "warning" : "success"}`, children: progressLabel })] })] })] }), _jsx("div", { className: "hero-illustration", "aria-hidden": true, children: _jsx("img", { className: "hero-illustration-img", src: BRAND_HERO_URL, alt: "", decoding: "async" }) })] }));
+                        ] }), _jsxs("div", { className: "hero-greeting classview-hero-text", children: [_jsx("h1", { className: "hero-headline", children: cls.name }), _jsx("p", { children: subtitle ?? "Course" }), _jsxs("div", { className: "classview-pill-row", children: [_jsx("span", { className: `classview-pill tone-${tone}`, children: "Lecture" }), examInDays !== null && (_jsx("span", { className: `classview-pill tone-${examInDays <= 3 ? "danger" : "amber"}`, children: examInDays <= 0 ? "Exam today" : `Exam in ${examInDays}d` })), _jsx("span", { className: `classview-pill tone-${progressTone === "warning" ? "warning" : "success"}`, children: progressLabel })] })] })] }), _jsx("div", { className: "hero-illustration", "aria-hidden": true, children: _jsx("img", { className: "hero-illustration-img", src: BRAND_CLASS_HERO_URL, alt: "", decoding: "async" }) })] }));
 };
 const ClassViewHeroSkeleton = () => (_jsx("section", { className: "hero", "aria-hidden": true, children: _jsxs("div", { className: "hero-main", children: [_jsx("div", { className: "search skeleton-bar", style: { height: 36 } }), _jsxs("div", { className: "hero-greeting", children: [_jsx("div", { className: "skeleton-bar", style: { width: 220, height: 32 } }), _jsx("div", { className: "skeleton-bar", style: { width: 280, height: 14 } })] })] }) }));
 export const Breadcrumbs = ({ trail }) => (_jsx("nav", { className: "crumbs", "aria-label": "Breadcrumb", children: trail.map((c, i) => {

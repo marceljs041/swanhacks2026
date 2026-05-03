@@ -377,6 +377,13 @@ export const BellIcon = make(
   </>,
 );
 
+export const LockIcon = make(
+  <>
+    <rect x="5" y="10" width="14" height="10" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </>,
+);
+
 export const LinkIcon = make(
   <>
     <path d="M10 14a4 4 0 0 1 0-5.7l3.2-3.2a4 4 0 1 1 5.7 5.7l-1.4 1.4" />

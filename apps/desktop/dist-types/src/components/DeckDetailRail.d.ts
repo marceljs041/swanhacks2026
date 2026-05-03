@@ -1,8 +1,7 @@
 /**
- * Right-hand rail shown on both the Flashcards hub and the per-deck
- * review screen. Pinned to `useApp.selectedDeckId` and rendered inside
- * the main `.flashcards-shell` so the global `RightPanel` widgets are
- * untouched.
+ * Third-column detail for flashcards: same grid cell as the global
+ * `RightPanel`, swapped in by the Flashcards hub / review routes when a
+ * deck is focused (`useApp.selectedDeckId`).
  *
  * Two variants:
  *  - `hub`     — adds a "Preview (3)" list of upcoming cards.
@@ -10,7 +9,6 @@
  *                tied to the card the user is on.
  */
 import type { FC } from "react";
-import { type DeckSummary } from "../db/repositories.js";
 import type { FlashcardRow } from "@studynest/shared";
 interface Props {
     variant: "hub" | "review";
@@ -18,8 +16,6 @@ interface Props {
     currentCard?: FlashcardRow | null;
     /** Whether the back of the current card is currently visible. */
     currentCardRevealed?: boolean;
-    /** Hub variant: optional preloaded deck summaries to avoid a refetch. */
-    summaries?: DeckSummary[];
     /** Called when the user toggles the favorite chip. */
     onToggleFavorite?: () => void;
     /** Whether the deck is currently a favorite. */

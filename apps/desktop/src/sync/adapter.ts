@@ -2,6 +2,7 @@ import { type SyncDb, buildOutboxRow } from "@studynest/sync";
 import {
   CLOUD_API_BASE_URL,
   type SyncEnvelope,
+  type SyncPullRequest,
   type SyncPullResponse,
   type SyncPushRequest,
   type SyncPushResponse,
@@ -160,7 +161,7 @@ export const desktopTransport = {
     if (!res.ok) throw new Error(`push failed ${res.status}`);
     return (await res.json()) as SyncPushResponse;
   },
-  async pull(req): Promise<SyncPullResponse> {
+  async pull(req: SyncPullRequest): Promise<SyncPullResponse> {
     const res = await fetch(`${CLOUD_API_BASE_URL}/sync/pull`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -36,7 +36,7 @@ async function enqueue(
   entity_type: SyncableEntity,
   entity_id: string,
   operation: "upsert" | "delete",
-  payload: Record<string, unknown>,
+  payload: object,
 ): Promise<void> {
   const db = await getDb();
   const ts = nowIso();
@@ -64,7 +64,7 @@ export async function listClasses(): Promise<ClassRow[]> {
     .prepare(
       "select * from classes where deleted_at is null and archived_at is null order by name",
     )
-    .all() as ClassRow[];
+    .all() as unknown as ClassRow[];
 }
 
 /**
@@ -91,7 +91,7 @@ export async function archiveClass(id: string): Promise<void> {
   db.prepare(
     "update classes set archived_at = ?, updated_at = ? where id = ?",
   ).run(ts, ts, id);
-  const row = db.prepare("select * from classes where id = ?").get(id) as ClassRow | undefined;
+  const row = db.prepare("select * from classes where id = ?").get(id) as unknown as ClassRow | undefined;
   if (row) await enqueue("classes", id, "upsert", row);
 }
 
@@ -194,7 +194,7 @@ export async function nextTaskByClass(): Promise<Map<string, StudyTaskRow>> {
          and coalesce(p.class_id, n.class_id) is not null
        order by st.scheduled_for`,
     )
-    .all(nowIso()) as Array<StudyTaskRow & { resolved_class_id: string }>;
+    .all(nowIso()) as unknown as Array<StudyTaskRow & { resolved_class_id: string }>;
   const out = new Map<string, StudyTaskRow>();
   for (const r of rows) {
     const { resolved_class_id, ...task } = r;
@@ -297,7 +297,7 @@ export async function flashcardSetsForClass(
        where fs.deleted_at is null and n.class_id = ?
        order by fs.created_at desc`,
     )
-    .all(classId) as FlashcardSetRow[];
+    .all(classId) as unknown as FlashcardSetRow[];
 }
 
 /** Quizzes whose parent note belongs to `classId`. */
@@ -310,7 +310,7 @@ export async function quizzesForClass(classId: string): Promise<QuizRow[]> {
        where qz.deleted_at is null and n.class_id = ?
        order by qz.created_at desc`,
     )
-    .all(classId) as QuizRow[];
+    .all(classId) as unknown as QuizRow[];
 }
 
 /**
@@ -344,7 +344,7 @@ export async function tasksForClass(
        where ${where}
        order by st.scheduled_for`,
     )
-    .all(...params) as StudyTaskRow[];
+    .all(...params) as unknown as StudyTaskRow[];
 }
 
 /**
@@ -515,16 +515,16 @@ export async function listNotes(classId?: string | null): Promise<NoteRow[]> {
       .prepare(
         "select * from notes where deleted_at is null and class_id = ? order by updated_at desc",
       )
-      .all(classId) as NoteRow[];
+      .all(classId) as unknown as NoteRow[];
   }
   return db
     .prepare("select * from notes where deleted_at is null order by updated_at desc")
-    .all() as NoteRow[];
+    .all() as unknown as NoteRow[];
 }
 
 export async function getNote(id: string): Promise<NoteRow | null> {
   const db = await getDb();
-  return (db.prepare("select * from notes where id = ?").get(id) as NoteRow) ?? null;
+  return (db.prepare("select * from notes where id = ?").get(id) as unknown as NoteRow) ?? null;
 }
 
 export async function upsertNote(
@@ -650,7 +650,7 @@ export async function notesMissingStudyTools(limit = 10): Promise<NoteRow[]> {
        order by n.updated_at desc
        limit ?`,
     )
-    .all(limit) as NoteRow[];
+    .all(limit) as unknown as NoteRow[];
 }
 
 /**
@@ -669,7 +669,7 @@ export async function notesNeedingSummary(limit = 10): Promise<NoteRow[]> {
        order by updated_at desc
        limit ?`,
     )
-    .all(limit) as NoteRow[];
+    .all(limit) as unknown as NoteRow[];
 }
 
 /**
@@ -823,7 +823,7 @@ export async function searchNotes(query: string, limit = 8): Promise<NoteRow[]> 
        order by updated_at desc
        limit ?`,
     )
-    .all(like, like, limit) as NoteRow[];
+    .all(like, like, limit) as unknown as NoteRow[];
 }
 
 /**
@@ -1008,18 +1008,18 @@ export async function listFlashcardSets(noteId?: string | null): Promise<Flashca
       .prepare(
         "select * from flashcard_sets where deleted_at is null and note_id = ? order by created_at desc",
       )
-      .all(noteId) as FlashcardSetRow[];
+      .all(noteId) as unknown as FlashcardSetRow[];
   }
   return db
     .prepare("select * from flashcard_sets where deleted_at is null order by created_at desc")
-    .all() as FlashcardSetRow[];
+    .all() as unknown as FlashcardSetRow[];
 }
 
 export async function listFlashcards(setId: string): Promise<FlashcardRow[]> {
   const db = await getDb();
   return db
     .prepare("select * from flashcards where deleted_at is null and set_id = ? order by created_at")
-    .all(setId) as FlashcardRow[];
+    .all(setId) as unknown as FlashcardRow[];
 }
 
 export async function listDueFlashcards(limit = 20): Promise<FlashcardRow[]> {
@@ -1031,7 +1031,7 @@ export async function listDueFlashcards(limit = 20): Promise<FlashcardRow[]> {
        where deleted_at is null and (due_at is null or due_at <= ?)
        order by due_at limit ?`,
     )
-    .all(now, limit) as FlashcardRow[];
+    .all(now, limit) as unknown as FlashcardRow[];
 }
 
 /**
@@ -1149,7 +1149,7 @@ export async function listDeckSummaries(): Promise<DeckSummary[]> {
       `select * from flashcard_sets where deleted_at is null
        order by updated_at desc, created_at desc`,
     )
-    .all() as FlashcardSetRow[];
+    .all() as unknown as FlashcardSetRow[];
   if (sets.length === 0) return [];
   const noteIds = Array.from(
     new Set(sets.map((s) => s.note_id).filter((v): v is string => !!v)),
@@ -1159,7 +1159,7 @@ export async function listDeckSummaries(): Promise<DeckSummary[]> {
         .prepare(
           `select * from notes where id in (${noteIds.map(() => "?").join(",")})`,
         )
-        .all(...noteIds) as NoteRow[])
+        .all(...noteIds) as unknown as NoteRow[])
     : [];
   const noteById = new Map(notes.map((n) => [n.id, n]));
 
@@ -1209,7 +1209,7 @@ export async function listFlashcardsByMode(
          where deleted_at is null and set_id = ? and difficulty = 'hard'
          order by last_reviewed_at desc, created_at`,
       )
-      .all(setId) as FlashcardRow[];
+      .all(setId) as unknown as FlashcardRow[];
   }
   if (mode === "cram") {
     return db
@@ -1218,7 +1218,7 @@ export async function listFlashcardsByMode(
          where deleted_at is null and set_id = ?
          order by created_at`,
       )
-      .all(setId) as FlashcardRow[];
+      .all(setId) as unknown as FlashcardRow[];
   }
   return db
     .prepare(
@@ -1227,7 +1227,7 @@ export async function listFlashcardsByMode(
          and (due_at is null or due_at <= ?)
        order by due_at`,
     )
-    .all(setId, now) as FlashcardRow[];
+    .all(setId, now) as unknown as FlashcardRow[];
 }
 
 /**
@@ -1239,7 +1239,7 @@ export async function markCardForReview(cardId: string): Promise<void> {
   const ts = nowIso();
   const row = db
     .prepare("select * from flashcards where id = ?")
-    .get(cardId) as FlashcardRow | undefined;
+    .get(cardId) as unknown as FlashcardRow | undefined;
   if (!row) return;
   await upsertFlashcard({
     ...row,
@@ -1279,7 +1279,7 @@ export async function relatedDecksForCard(
   const db = await getDb();
   const card = db
     .prepare("select * from flashcards where id = ?")
-    .get(cardId) as FlashcardRow | undefined;
+    .get(cardId) as unknown as FlashcardRow | undefined;
   if (!card) return [];
   const tokens = new Set(
     card.front
@@ -1473,17 +1473,17 @@ export async function listQuizzes(noteId?: string | null): Promise<QuizRow[]> {
       .prepare(
         "select * from quizzes where deleted_at is null and note_id = ? order by created_at desc",
       )
-      .all(noteId) as QuizRow[];
+      .all(noteId) as unknown as QuizRow[];
   }
   return db
     .prepare("select * from quizzes where deleted_at is null order by created_at desc")
-    .all() as QuizRow[];
+    .all() as unknown as QuizRow[];
 }
 
 export async function getQuiz(id: string): Promise<QuizRow | null> {
   const db = await getDb();
   return (
-    (db.prepare("select * from quizzes where id = ?").get(id) as QuizRow) ?? null
+    (db.prepare("select * from quizzes where id = ?").get(id) as unknown as QuizRow) ?? null
   );
 }
 
@@ -1495,7 +1495,7 @@ export async function listQuizQuestions(quizId: string): Promise<QuizQuestionRow
        where deleted_at is null and quiz_id = ?
        order by coalesce(position, 9999), created_at`,
     )
-    .all(quizId) as QuizQuestionRow[];
+    .all(quizId) as unknown as QuizQuestionRow[];
 }
 
 export interface QuizStats {
@@ -1611,7 +1611,7 @@ export async function quizSummaries(): Promise<QuizSummary[]> {
        where qz.deleted_at is null
        order by qz.updated_at desc, qz.created_at desc`,
     )
-    .all() as Array<QuizRow & { note_class_id: string | null; note_title: string | null }>;
+    .all() as unknown as Array<QuizRow & { note_class_id: string | null; note_title: string | null }>;
 
   if (quizzes.length === 0) return [];
 
@@ -1785,7 +1785,7 @@ export async function quizAttemptsForQuiz(quizId: string): Promise<QuizAttemptRo
       `select * from quiz_attempts where quiz_id = ?
        order by created_at desc`,
     )
-    .all(quizId) as QuizAttemptRow[];
+    .all(quizId) as unknown as QuizAttemptRow[];
 }
 
 export interface TopicPerformance {
@@ -1814,7 +1814,7 @@ export async function topicPerformance(
           `select * from quiz_attempts where quiz_id = ? and completed = 1
            order by created_at desc limit 1`,
         )
-        .get(quizId) as QuizAttemptRow | undefined);
+        .get(quizId) as unknown as QuizAttemptRow | undefined);
   if (!attempt) return [];
 
   let answers: Record<string, string> = {};
@@ -2081,7 +2081,7 @@ export async function listTasksForRange(fromIso: string, toIso: string): Promise
       `select * from study_tasks where deleted_at is null
        and scheduled_for >= ? and scheduled_for < ? order by scheduled_for`,
     )
-    .all(fromIso, toIso) as StudyTaskRow[];
+    .all(fromIso, toIso) as unknown as StudyTaskRow[];
 
   type CalRow = {
     id: string;
@@ -2105,7 +2105,7 @@ export async function listTasksForRange(fromIso: string, toIso: string): Promise
          and start_at >= ? and start_at < ?
        order by start_at`,
     )
-    .all(fromIso, toIso) as CalRow[];
+    .all(fromIso, toIso) as unknown as CalRow[];
 
   const synthesized: StudyTaskRow[] = events.map((e) => ({
     id: e.id,
@@ -2302,7 +2302,7 @@ export async function listOutbox(limit: number): Promise<SyncOutboxRow[]> {
       `select * from sync_outbox where synced_at is null
        order by created_at limit ?`,
     )
-    .all(limit) as SyncOutboxRow[];
+    .all(limit) as unknown as SyncOutboxRow[];
 }
 
 export async function markOutboxSynced(ids: string[]): Promise<void> {

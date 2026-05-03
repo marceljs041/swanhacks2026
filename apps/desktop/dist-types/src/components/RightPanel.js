@@ -5,10 +5,10 @@ import { ArrowRightIcon, CalendarIcon, CheckIcon, ChevLeftIcon, ChevRightIcon, C
 import { useApp } from "../store.js";
 import { DEFAULT_TIMER_DURATIONS, TIMER_BOUNDS, getTimerDurations, saveTimerDurations, } from "../lib/timerPrefs.js";
 import { withViewTransition } from "../lib/viewTransition.js";
-import { currentStreak, listClasses, listDueFlashcards, listFlashcardSets, listNotes, listTasksForRange, recordXp, totalXp, upsertNote, upsertStudyTask, xpByDay, } from "../db/repositories.js";
-import { ulid, XP_RULES } from "@studynest/shared";
+import { currentStreak, listClasses, listDueFlashcards, listFlashcardSets, listNotes, listTasksForRange, recordRewardPoints, recordXp, totalRewardPoints, totalXp, upsertNote, upsertStudyTask, xpByDay, } from "../db/repositories.js";
+import { POINTS_RULES, ulid, XP_RULES } from "@studynest/shared";
 import { ALL_WIDGETS, WIDGET_DESCRIPTIONS, WIDGET_LABELS, inactiveWidgets, } from "../lib/rightPanelLayout.js";
-export const RightPanel = ({ classesSwap }) => {
+export const RightPanel = ({ classesSwap, flashcardsSwap, calendarSwap, }) => {
     const activeIds = useApp((s) => s.rightPanelWidgets);
     const setActive = useApp((s) => s.setRightPanelWidgets);
     const valid = useMemo(() => activeIds.filter((id) => ALL_WIDGETS.includes(id)), [activeIds]);
@@ -55,7 +55,7 @@ export const RightPanel = ({ classesSwap }) => {
             return;
         setActive([...valid, id]);
     }
-    return (_jsxs("aside", { className: `right-panel${classesSwap ? " right-panel--classes-swap" : ""}`, children: [_jsx(RightPanelHeader, { editing: editing, canSave: draft.length > 0 || valid.length === 0, onEdit: enterEdit, onCancel: cancel, onSave: save }), editing ? (_jsx(ReorderList, { ids: draft, onReorder: reorder, onRemove: removeFromDraft })) : (_jsxs(_Fragment, { children: [valid.map((id) => {
+    return (_jsxs("aside", { className: `right-panel${classesSwap ? " right-panel--classes-swap" : ""}${flashcardsSwap ? " right-panel--flashcards-swap" : ""}${calendarSwap ? " right-panel--calendar-swap" : ""}`, children: [_jsx(RightPanelHeader, { editing: editing, canSave: draft.length > 0 || valid.length === 0, onEdit: enterEdit, onCancel: cancel, onSave: save }), editing ? (_jsx(ReorderList, { ids: draft, onReorder: reorder, onRemove: removeFromDraft })) : (_jsxs(_Fragment, { children: [valid.map((id) => {
                         const Component = WIDGETS[id];
                         return _jsx(Component, {}, id);
                     }), _jsx(AddWidgetSkeleton, { inactive: inactiveWidgets(valid), onAdd: add })] }))] }));
@@ -267,11 +267,14 @@ function levelFromXp(xp) {
 function LevelCard() {
     const xpToday = useApp((s) => s.xpToday);
     const [lifetime, setLifetime] = useState(0);
+    const [rewardPoints, setRewardPoints] = useState(0);
     useEffect(() => {
         let cancelled = false;
-        void totalXp().then((t) => {
-            if (!cancelled)
-                setLifetime(t);
+        void Promise.all([totalXp(), totalRewardPoints()]).then(([xp, points]) => {
+            if (cancelled)
+                return;
+            setLifetime(xp);
+            setRewardPoints(points);
         });
         return () => {
             cancelled = true;
@@ -281,7 +284,7 @@ function LevelCard() {
     const intoLevel = lifetime - floor;
     const span = ceiling - floor;
     const pct = Math.max(0, Math.min(1, intoLevel / span));
-    return (_jsxs(Card, { className: "level-card", children: [_jsxs("div", { className: "level-top", children: [_jsx("span", { className: "badge", children: _jsx(TrophyIcon, { size: 14 }) }), _jsxs("div", { className: "level-text", children: [_jsxs("span", { className: "l1", children: ["Level ", level] }), _jsx("span", { className: "l2", children: "Study Goat" })] })] }), _jsxs("div", { className: "xp-row", children: [_jsx("span", { className: "label", children: "XP" }), _jsxs("span", { className: "val", children: [lifetime.toLocaleString(), " / ", ceiling.toLocaleString()] })] }), _jsx("div", { className: "level-bar", children: _jsx("span", { style: { width: `${pct * 100}%` } }) }), _jsxs("div", { className: "level-foot", children: [span - intoLevel, " XP to level ", level + 1] })] }));
+    return (_jsxs(Card, { className: "level-card", children: [_jsxs("div", { className: "level-top", children: [_jsx("span", { className: "badge", children: _jsx(TrophyIcon, { size: 14 }) }), _jsxs("div", { className: "level-text", children: [_jsxs("span", { className: "l1", children: ["Level ", level] }), _jsx("span", { className: "l2", children: "Study Goat" })] })] }), _jsxs("div", { className: "xp-row", children: [_jsx("span", { className: "label", children: "XP" }), _jsxs("span", { className: "val", children: [lifetime.toLocaleString(), " / ", ceiling.toLocaleString()] })] }), _jsxs("div", { className: "xp-row", children: [_jsx("span", { className: "label", children: "Points" }), _jsx("span", { className: "val", children: rewardPoints.toLocaleString() })] }), _jsx("div", { className: "level-bar", children: _jsx("span", { style: { width: `${pct * 100}%` } }) }), _jsxs("div", { className: "level-foot", children: [span - intoLevel, " XP to level ", level + 1] })] }));
 }
 /* ---- Upcoming Deadlines ------------------------------------------ */
 function UpcomingDeadlinesCard() {
@@ -409,8 +412,10 @@ function StudyTimerCard() {
             completedRef.current = true;
             const wasFocus = timer.mode === "focus";
             setTimer(null);
-            if (wasFocus)
+            if (wasFocus) {
                 void recordXp("studyTimerComplete", XP_RULES.studyTaskComplete);
+                void recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
+            }
         }
     }, [now, timer, setTimer]);
     function start() {
@@ -570,8 +575,10 @@ function TodaysPlanCard() {
             ...t,
             completed_at: wasComplete ? null : new Date().toISOString(),
         });
-        if (!wasComplete)
+        if (!wasComplete) {
             await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+            await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
+        }
         setReloadTick((n) => n + 1);
     }
     return (_jsxs(Card, { title: "Today's Plan", icon: _jsx(CheckIcon, { size: 16 }), className: "today-plan-card", children: [visible.length === 0 ? (_jsx("p", { className: "right-empty", children: "Nothing scheduled today." })) : (_jsx("div", { className: "plan-list compact", children: visible.map((t) => {

@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { currentStreak, listClasses, listDueFlashcards, listNotes, listTasksForRange, quizStats, recordXp, totalXpToday, upsertAttachment, upsertNote, upsertStudyTask, } from "../db/repositories.js";
+import { currentStreak, listClasses, listDueFlashcards, listNotes, listTasksForRange, quizStats, recordRewardPoints, recordXp, totalXpToday, upsertAttachment, upsertNote, upsertStudyTask, } from "../db/repositories.js";
 import { useApp } from "../store.js";
 import { Card } from "./ui/Card.js";
 import { Donut, ProgressRing } from "./ui/ProgressRing.js";
@@ -8,8 +8,9 @@ import { AudioRecorderModal } from "./AudioRecorderModal.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { BRAND_HERO_URL } from "../lib/brand.js";
 import { firstName } from "../lib/profile.js";
+import { refreshUserBadges } from "../lib/badgesSync.js";
 import { getGreeting } from "../lib/greeting.js";
-import { XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, XP_RULES } from "@studynest/shared";
 import { ArrowRightIcon, CheckIcon, ClockIcon, FlameIcon, FlashcardIcon, ImageIcon, MicIcon, NoteIcon, PencilIcon, QuizIcon, SparklesIcon, } from "./icons.js";
 /* ================================================================== */
 /* Home — primary dashboard                                            */
@@ -52,6 +53,7 @@ export const Home = () => {
         setClasses(cls);
         setWeekTasks(tasks);
         setStats(qs);
+        await refreshUserBadges();
     }, [setXp, setDueCards, setNotes, setClasses, setWeekTasks]);
     useEffect(() => {
         void reloadAll();
@@ -260,6 +262,7 @@ const TodaysPlanCard = ({ tasks, onChange, }) => {
         });
         if (!wasComplete) {
             await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+            await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
         }
         onChange();
     }

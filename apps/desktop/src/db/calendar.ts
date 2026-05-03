@@ -24,7 +24,7 @@ async function enqueue(
   entity_type: SyncableEntity,
   entity_id: string,
   operation: "upsert" | "delete",
-  payload: Record<string, unknown>,
+  payload: object,
 ): Promise<void> {
   const db = await getDb();
   const ts = nowIso();
@@ -83,7 +83,7 @@ export async function listEventsForRange(
     .prepare(
       `select * from calendar_events where ${where} order by start_at`,
     )
-    .all(...params) as CalendarEventRow[];
+    .all(...params) as unknown as CalendarEventRow[];
 }
 
 /** Today's events (start of local day → next local midnight). */
@@ -98,7 +98,7 @@ export async function listEventsForDay(date: Date): Promise<CalendarEventRow[]> 
 export async function getEvent(id: string): Promise<CalendarEventRow | null> {
   const db = await getDb();
   return (
-    (db.prepare("select * from calendar_events where id = ?").get(id) as
+    (db.prepare("select * from calendar_events where id = ?").get(id) as unknown as
       | CalendarEventRow
       | undefined) ?? null
   );
@@ -240,7 +240,7 @@ export async function searchEvents(
               or location like ? escape '\\')
        order by start_at desc limit ?`,
     )
-    .all(like, like, like, limit) as CalendarEventRow[];
+    .all(like, like, like, limit) as unknown as CalendarEventRow[];
 }
 
 /* ---------------- Checklist ---------------- */
@@ -252,7 +252,7 @@ export async function listChecklist(eventId: string): Promise<ChecklistItemRow[]
       `select * from checklist_items where deleted_at is null and event_id = ?
        order by coalesce(position, 9999), created_at`,
     )
-    .all(eventId) as ChecklistItemRow[];
+    .all(eventId) as unknown as ChecklistItemRow[];
 }
 
 export interface UpsertChecklistInput {
@@ -296,7 +296,7 @@ export async function toggleChecklistItem(id: string): Promise<void> {
   const db = await getDb();
   const row = db
     .prepare("select * from checklist_items where id = ?")
-    .get(id) as ChecklistItemRow | undefined;
+    .get(id) as unknown as ChecklistItemRow | undefined;
   if (!row) return;
   await upsertChecklistItem({
     ...row,

@@ -7,6 +7,7 @@
  * cloud (during sync pull) — otherwise we'd echo the change back.
  */
 import { nowIso, ulid, } from "@studynest/shared";
+import { maxIso } from "../lib/relativeTime.js";
 import { getDb, getDeviceId } from "./client.js";
 async function enqueue(entity_type, entity_id, operation, payload) {
     const db = await getDb();
@@ -532,6 +533,50 @@ export async function unsyncedNotesCount() {
     return row.c;
 }
 /**
+ * Cloud sync progress for the sidebar: combine pull cursor, last successful
+ * upload, and outbox backpressure. `lastActivityAt` is the more recent of pull
+ * vs push so “just now” reflects a real round-trip, not only an empty pull.
+ *
+ * Also includes the most recent outbox error so the UI can show why uploads
+ * are stuck instead of just a count.
+ */
+export async function getCloudSyncMeta() {
+    const db = await getDb();
+    const row = db
+        .prepare("select last_pulled_at, last_pushed_at from sync_state where id = 1")
+        .get();
+    const pending = db
+        .prepare("select count(*) as c from sync_outbox where synced_at is null")
+        .get();
+    const errRow = db
+        .prepare(`select entity_type, last_error from sync_outbox
+       where synced_at is null and last_error is not null
+       order by retry_count desc, created_at desc limit 1`)
+        .get();
+    const lastPulledAt = row?.last_pulled_at ?? null;
+    const lastPushedAt = row?.last_pushed_at ?? null;
+    return {
+        lastPulledAt,
+        lastPushedAt,
+        lastActivityAt: maxIso(lastPulledAt, lastPushedAt),
+        pendingOutbox: pending.c,
+        lastOutboxError: errRow
+            ? { entity_type: errRow.entity_type, reason: errRow.last_error }
+            : null,
+    };
+}
+/** Outbox rows that have failed at least once; surfaced in Settings/diagnostics. */
+export async function listOutboxErrors(limit = 20) {
+    const db = await getDb();
+    return db
+        .prepare(`select id, entity_type, entity_id, retry_count, last_error, created_at
+       from sync_outbox
+       where synced_at is null and last_error is not null
+       order by retry_count desc, created_at desc
+       limit ?`)
+        .all(limit);
+}
+/**
  * Existence checks for the AI Ready Queue heuristic — lets the UI pick
  * the next-best AI action per note (summarise → flashcards → quiz).
  */
@@ -998,15 +1043,32 @@ export async function upsertQuiz(input, opts = {}) {
     const row = {
         id: input.id ?? ulid("qz"),
         note_id: input.note_id ?? null,
+        class_id: input.class_id ?? null,
         title: input.title,
+        description: input.description ?? null,
+        difficulty: input.difficulty ?? "medium",
+        status: input.status ?? "new",
+        source_type: input.source_type ?? "note",
+        source_ids_json: input.source_ids_json ?? null,
+        weak_topics_json: input.weak_topics_json ?? null,
+        tags_json: input.tags_json ?? null,
         created_at: input.created_at ?? ts,
         updated_at: ts,
         deleted_at: input.deleted_at ?? null,
     };
-    db.prepare(`insert into quizzes (id, note_id, title, created_at, updated_at, deleted_at)
-     values (@id, @note_id, @title, @created_at, @updated_at, @deleted_at)
+    db.prepare(`insert into quizzes
+       (id, note_id, class_id, title, description, difficulty, status,
+        source_type, source_ids_json, weak_topics_json, tags_json,
+        created_at, updated_at, deleted_at)
+     values (@id, @note_id, @class_id, @title, @description, @difficulty, @status,
+             @source_type, @source_ids_json, @weak_topics_json, @tags_json,
+             @created_at, @updated_at, @deleted_at)
      on conflict(id) do update set
-       note_id=excluded.note_id, title=excluded.title,
+       note_id=excluded.note_id, class_id=excluded.class_id, title=excluded.title,
+       description=excluded.description, difficulty=excluded.difficulty,
+       status=excluded.status, source_type=excluded.source_type,
+       source_ids_json=excluded.source_ids_json,
+       weak_topics_json=excluded.weak_topics_json, tags_json=excluded.tags_json,
        updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`).run(row);
     if (!opts.skipOutbox)
         await enqueue("quizzes", row.id, "upsert", row);
@@ -1023,22 +1085,36 @@ export async function upsertQuizQuestion(input, opts = {}) {
         options_json: input.options_json ?? null,
         correct_answer: input.correct_answer,
         explanation: input.explanation ?? null,
+        topic: input.topic ?? null,
+        hint: input.hint ?? null,
+        source_note_id: input.source_note_id ?? null,
+        position: input.position ?? null,
         created_at: input.created_at ?? ts,
         updated_at: ts,
         deleted_at: input.deleted_at ?? null,
     };
     db.prepare(`insert into quiz_questions
        (id, quiz_id, type, question, options_json, correct_answer, explanation,
+        topic, hint, source_note_id, position,
         created_at, updated_at, deleted_at)
      values (@id, @quiz_id, @type, @question, @options_json, @correct_answer, @explanation,
+             @topic, @hint, @source_note_id, @position,
              @created_at, @updated_at, @deleted_at)
      on conflict(id) do update set
        type=excluded.type, question=excluded.question, options_json=excluded.options_json,
        correct_answer=excluded.correct_answer, explanation=excluded.explanation,
+       topic=excluded.topic, hint=excluded.hint,
+       source_note_id=excluded.source_note_id, position=excluded.position,
        updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`).run(row);
     if (!opts.skipOutbox)
         await enqueue("quiz_questions", row.id, "upsert", row);
     return row;
+}
+export async function softDeleteQuiz(id) {
+    const db = await getDb();
+    const ts = nowIso();
+    db.prepare("update quizzes set deleted_at = ?, updated_at = ? where id = ?").run(ts, ts, id);
+    await enqueue("quizzes", id, "delete", { id, deleted_at: ts });
 }
 export async function listQuizzes(noteId) {
     const db = await getDb();
@@ -1051,10 +1127,16 @@ export async function listQuizzes(noteId) {
         .prepare("select * from quizzes where deleted_at is null order by created_at desc")
         .all();
 }
+export async function getQuiz(id) {
+    const db = await getDb();
+    return (db.prepare("select * from quizzes where id = ?").get(id) ?? null);
+}
 export async function listQuizQuestions(quizId) {
     const db = await getDb();
     return db
-        .prepare("select * from quiz_questions where deleted_at is null and quiz_id = ? order by created_at")
+        .prepare(`select * from quiz_questions
+       where deleted_at is null and quiz_id = ?
+       order by coalesce(position, 9999), created_at`)
         .all(quizId);
 }
 /**
@@ -1065,7 +1147,7 @@ export async function listQuizQuestions(quizId) {
 export async function quizStats() {
     const db = await getDb();
     const rows = db
-        .prepare("select score, total from quiz_attempts where total > 0")
+        .prepare("select score, total from quiz_attempts where total > 0 and completed = 1")
         .all();
     if (rows.length === 0)
         return { taken: 0, avgPct: 0, best: 0 };
@@ -1083,6 +1165,236 @@ export async function quizStats() {
         best: Math.round(best),
     };
 }
+export async function fetchBadgeProgressMetrics() {
+    const db = await getDb();
+    const noteRow = db
+        .prepare("select count(*) as c from notes where deleted_at is null")
+        .get();
+    const classRow = db
+        .prepare("select count(*) as c from classes where deleted_at is null")
+        .get();
+    const fcRow = db
+        .prepare("select coalesce(sum(review_count), 0) as s from flashcards where deleted_at is null")
+        .get();
+    const [qs, streak, xp] = await Promise.all([
+        quizStats(),
+        currentStreak(),
+        totalXp(),
+    ]);
+    return {
+        noteCount: noteRow.c,
+        classCount: classRow.c,
+        quizAttempts: qs.taken,
+        quizBestPct: qs.best,
+        flashcardReviews: fcRow.s,
+        streak,
+        totalXp: xp,
+    };
+}
+/**
+ * One row per non-deleted quiz with computed last/best score and a
+ * resolved class id. We do the joins in SQL but compute percentages
+ * client-side because the existing `quiz_attempts.total` can be 0 for
+ * abandoned attempts.
+ */
+export async function quizSummaries() {
+    const db = await getDb();
+    const quizzes = db
+        .prepare(`select qz.*, n.class_id as note_class_id, n.title as note_title
+       from quizzes qz
+       left join notes n on n.id = qz.note_id and n.deleted_at is null
+       where qz.deleted_at is null
+       order by qz.updated_at desc, qz.created_at desc`)
+        .all();
+    if (quizzes.length === 0)
+        return [];
+    const ids = quizzes.map((q) => q.id);
+    const placeholders = ids.map(() => "?").join(",");
+    const counts = db
+        .prepare(`select quiz_id, count(*) as c from quiz_questions
+       where deleted_at is null and quiz_id in (${placeholders})
+       group by quiz_id`)
+        .all(...ids);
+    const countByQuiz = new Map(counts.map((r) => [r.quiz_id, r.c]));
+    const attempts = db
+        .prepare(`select quiz_id, score, total, created_at, finished_at, completed
+       from quiz_attempts where quiz_id in (${placeholders})
+       order by created_at desc`)
+        .all(...ids);
+    const sessions = db
+        .prepare(`select quiz_id from quiz_sessions where quiz_id in (${placeholders})`)
+        .all(...ids);
+    const sessionSet = new Set(sessions.map((s) => s.quiz_id));
+    const unsynced = db
+        .prepare(`select distinct entity_id as id from sync_outbox
+       where entity_type = 'quizzes' and synced_at is null
+         and entity_id in (${placeholders})`)
+        .all(...ids);
+    const unsyncedSet = new Set(unsynced.map((u) => u.id));
+    const out = [];
+    for (const q of quizzes) {
+        const my = attempts.filter((a) => a.quiz_id === q.id && a.completed === 1 && a.total > 0);
+        let lastPct = null;
+        let bestPct = null;
+        let lastAt = null;
+        for (const a of my) {
+            const pct = Math.round((a.score / a.total) * 100);
+            const at = a.finished_at ?? a.created_at;
+            if (lastAt === null || at > lastAt) {
+                lastAt = at;
+                lastPct = pct;
+            }
+            if (bestPct === null || pct > bestPct)
+                bestPct = pct;
+        }
+        const inProgress = sessionSet.has(q.id);
+        const status = inProgress
+            ? "in_progress"
+            : my.length > 0
+                ? "completed"
+                : "new";
+        out.push({
+            quiz: q,
+            classId: q.class_id ?? q.note_class_id ?? null,
+            noteTitle: q.note_title,
+            questionCount: countByQuiz.get(q.id) ?? 0,
+            attempts: my.length,
+            lastScorePct: lastPct,
+            bestScorePct: bestPct,
+            lastAttemptAt: lastAt,
+            status,
+            needsReview: lastPct !== null && lastPct < 70,
+            unsynced: unsyncedSet.has(q.id),
+        });
+    }
+    return out;
+}
+export async function quizzesHubStats() {
+    const db = await getDb();
+    const baseStats = await quizStats();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dueRow = db
+        .prepare(`select count(*) as c from study_tasks
+       where deleted_at is null and type = 'quiz'
+         and scheduled_for >= ? and scheduled_for < ?
+         and completed_at is null`)
+        .get(today.toISOString(), tomorrow.toISOString());
+    const topicSet = new Set();
+    const recent = db
+        .prepare(`select weak_topics_json from quiz_attempts
+       where weak_topics_json is not null and completed = 1
+       order by created_at desc limit 25`)
+        .all();
+    for (const r of recent) {
+        if (!r.weak_topics_json)
+            continue;
+        try {
+            const arr = JSON.parse(r.weak_topics_json);
+            if (Array.isArray(arr))
+                for (const t of arr)
+                    if (typeof t === "string" && t.trim())
+                        topicSet.add(t.trim());
+        }
+        catch {
+            /* drop */
+        }
+    }
+    return {
+        taken: baseStats.taken,
+        avgPct: baseStats.avgPct,
+        weakTopicCount: topicSet.size,
+        dueToday: dueRow.c,
+    };
+}
+/** Topic labels surfaced by aggregating recent attempts' weak_topics_json. */
+export async function recentWeakTopics(limit = 8) {
+    const db = await getDb();
+    const rows = db
+        .prepare(`select weak_topics_json from quiz_attempts
+       where weak_topics_json is not null and completed = 1
+       order by created_at desc limit 50`)
+        .all();
+    const counts = new Map();
+    for (const r of rows) {
+        if (!r.weak_topics_json)
+            continue;
+        try {
+            const arr = JSON.parse(r.weak_topics_json);
+            if (!Array.isArray(arr))
+                continue;
+            for (const t of arr) {
+                if (typeof t !== "string")
+                    continue;
+                const k = t.trim();
+                if (!k)
+                    continue;
+                counts.set(k, (counts.get(k) ?? 0) + 1);
+            }
+        }
+        catch {
+            /* drop */
+        }
+    }
+    return Array.from(counts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([k]) => k);
+}
+export async function quizAttemptsForQuiz(quizId) {
+    const db = await getDb();
+    return db
+        .prepare(`select * from quiz_attempts where quiz_id = ?
+       order by created_at desc`)
+        .all(quizId);
+}
+/**
+ * For the most recent completed attempt on a quiz, group questions by
+ * `topic` and report correct / total counts. Used by the results screen.
+ */
+export async function topicPerformance(quizId, attemptId) {
+    const db = await getDb();
+    const attempt = attemptId
+        ? db.prepare("select * from quiz_attempts where id = ?").get(attemptId)
+        : db
+            .prepare(`select * from quiz_attempts where quiz_id = ? and completed = 1
+           order by created_at desc limit 1`)
+            .get(quizId);
+    if (!attempt)
+        return [];
+    let answers = {};
+    try {
+        const parsed = JSON.parse(attempt.answers_json);
+        if (parsed && typeof parsed === "object") {
+            answers = parsed;
+        }
+    }
+    catch {
+        /* drop */
+    }
+    const questions = await listQuizQuestions(quizId);
+    const buckets = new Map();
+    for (const q of questions) {
+        const topic = (q.topic ?? "General").trim() || "General";
+        const cur = buckets.get(topic) ?? { total: 0, correct: 0 };
+        cur.total += 1;
+        const a = (answers[q.id] ?? "").trim().toLowerCase();
+        const correct = q.correct_answer.trim().toLowerCase();
+        if (a && a === correct)
+            cur.correct += 1;
+        buckets.set(topic, cur);
+    }
+    return Array.from(buckets.entries())
+        .map(([topic, v]) => ({
+        topic,
+        total: v.total,
+        correct: v.correct,
+        pct: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
+    }))
+        .sort((a, b) => a.pct - b.pct);
+}
 export async function recordQuizAttempt(args) {
     const db = await getDb();
     const ts = nowIso();
@@ -1092,11 +1404,67 @@ export async function recordQuizAttempt(args) {
         score: args.score,
         total: args.total,
         answers_json: JSON.stringify(args.answers),
+        started_at: args.started_at,
+        finished_at: args.finished_at,
+        completed: args.completed === false ? 0 : 1,
+        weak_topics_json: JSON.stringify(args.weak_topics),
+        time_spent_seconds: args.time_spent_seconds,
         created_at: ts,
     };
-    db.prepare(`insert into quiz_attempts (id, quiz_id, score, total, answers_json, created_at)
-     values (@id, @quiz_id, @score, @total, @answers_json, @created_at)`).run(row);
+    db.prepare(`insert into quiz_attempts
+       (id, quiz_id, score, total, answers_json, started_at, finished_at,
+        completed, weak_topics_json, time_spent_seconds, created_at)
+     values (@id, @quiz_id, @score, @total, @answers_json, @started_at, @finished_at,
+             @completed, @weak_topics_json, @time_spent_seconds, @created_at)`).run(row);
     await enqueue("quiz_attempts", row.id, "upsert", row);
+    if (row.completed === 1) {
+        const quiz = await getQuiz(args.quiz_id);
+        if (quiz) {
+            await upsertQuiz({
+                ...quiz,
+                status: "completed",
+                weak_topics_json: JSON.stringify(args.weak_topics),
+            });
+        }
+    }
+    return row;
+}
+// ---------------- Quiz sessions (resume) ----------------
+export async function getQuizSession(quizId) {
+    const db = await getDb();
+    return (db.prepare("select * from quiz_sessions where quiz_id = ?").get(quizId) ?? null);
+}
+export async function saveQuizSession(input, opts = {}) {
+    const db = await getDb();
+    const ts = nowIso();
+    const existing = await getQuizSession(input.quiz_id);
+    const row = {
+        quiz_id: input.quiz_id,
+        current_index: Math.max(0, input.current_index | 0),
+        answers_json: JSON.stringify(input.answers ?? {}),
+        started_at: existing?.started_at ?? input.started_at ?? ts,
+        updated_at: ts,
+    };
+    db.prepare(`insert into quiz_sessions (quiz_id, current_index, answers_json, started_at, updated_at)
+     values (@quiz_id, @current_index, @answers_json, @started_at, @updated_at)
+     on conflict(quiz_id) do update set
+       current_index=excluded.current_index, answers_json=excluded.answers_json,
+       updated_at=excluded.updated_at`).run(row);
+    if (!existing) {
+        const quiz = await getQuiz(input.quiz_id);
+        if (quiz && quiz.status !== "in_progress") {
+            await upsertQuiz({ ...quiz, status: "in_progress" });
+        }
+    }
+    if (!opts.skipOutbox) {
+        await enqueue("quiz_sessions", input.quiz_id, "upsert", row);
+    }
+    return row;
+}
+export async function clearQuizSession(quizId) {
+    const db = await getDb();
+    db.prepare("delete from quiz_sessions where quiz_id = ?").run(quizId);
+    await enqueue("quiz_sessions", quizId, "delete", { quiz_id: quizId });
 }
 // ---------------- Study plans / tasks ----------------
 export async function upsertStudyPlan(input, opts = {}) {
@@ -1123,6 +1491,38 @@ export async function upsertStudyPlan(input, opts = {}) {
 export async function upsertStudyTask(input, opts = {}) {
     const db = await getDb();
     const ts = nowIso();
+    // Forward writes that originated from a synthesized calendar_event
+    // (id prefixed `evt_`) onto the calendar_events table so widget
+    // toggles like "mark complete" reflect on the new Calendar without
+    // creating a phantom study_tasks row alongside the event.
+    if (input.id && input.id.startsWith("evt_") && !opts.skipOutbox) {
+        const ev = db
+            .prepare("select * from calendar_events where id = ?")
+            .get(input.id);
+        if (ev) {
+            const isCompleted = !!input.completed_at;
+            db.prepare(`update calendar_events
+         set status = ?, updated_at = ?, sync_version = sync_version + 1
+         where id = ?`).run(isCompleted ? "completed" : "scheduled", ts, input.id);
+            const refreshed = db
+                .prepare("select * from calendar_events where id = ?")
+                .get(input.id);
+            await enqueue("calendar_events", input.id, "upsert", refreshed);
+            return {
+                id: input.id,
+                plan_id: input.plan_id ?? null,
+                note_id: input.note_id ?? null,
+                title: input.title,
+                type: input.type,
+                scheduled_for: input.scheduled_for,
+                duration_minutes: input.duration_minutes ?? 20,
+                completed_at: input.completed_at ?? null,
+                created_at: input.created_at ?? ts,
+                updated_at: ts,
+                deleted_at: input.deleted_at ?? null,
+            };
+        }
+    }
     const row = {
         id: input.id ?? ulid("tsk"),
         plan_id: input.plan_id ?? null,
@@ -1150,12 +1550,67 @@ export async function upsertStudyTask(input, opts = {}) {
         await enqueue("study_tasks", row.id, "upsert", row);
     return row;
 }
+/**
+ * Returns scheduled study tasks in `[fromIso, toIso)` from the legacy
+ * `study_tasks` table joined with the newer `calendar_events` table,
+ * adapted to the same `StudyTaskRow` shape so existing widgets
+ * (Home, RightPanel) keep working without modification while we
+ * migrate them to read calendar_events directly.
+ *
+ * Dedup rule: events whose id is `evt_legacy_<x>` were created by
+ * `ensureCalendarBackfill` and represent the same entity as the
+ * `study_tasks` row with id `<x>`. We hide those mirrors so the user
+ * doesn't see double rows. New events created via the Calendar UI
+ * (regular `evt_…` ids) flow through as synthetic study tasks.
+ */
 export async function listTasksForRange(fromIso, toIso) {
     const db = await getDb();
-    return db
+    const tasks = db
         .prepare(`select * from study_tasks where deleted_at is null
        and scheduled_for >= ? and scheduled_for < ? order by scheduled_for`)
         .all(fromIso, toIso);
+    const events = db
+        .prepare(`select id, title, type, note_id, study_plan_id, start_at, end_at,
+              status, created_at, updated_at
+       from calendar_events
+       where deleted_at is null
+         and id not like 'evt_legacy_%'
+         and start_at >= ? and start_at < ?
+       order by start_at`)
+        .all(fromIso, toIso);
+    const synthesized = events.map((e) => ({
+        id: e.id,
+        plan_id: e.study_plan_id,
+        note_id: e.note_id,
+        title: e.title,
+        type: mapEventTypeToTaskType(e.type),
+        scheduled_for: e.start_at,
+        duration_minutes: Math.max(5, Math.round((new Date(e.end_at).getTime() - new Date(e.start_at).getTime()) / 60_000)),
+        completed_at: e.status === "completed" ? e.updated_at : null,
+        created_at: e.created_at,
+        updated_at: e.updated_at,
+        deleted_at: null,
+    }));
+    return [...tasks, ...synthesized].sort((a, b) => a.scheduled_for.localeCompare(b.scheduled_for));
+}
+function mapEventTypeToTaskType(t) {
+    switch (t) {
+        case "flashcards":
+            return "flashcards";
+        case "quiz":
+            return "quiz";
+        case "reading":
+            return "read";
+        case "assignment":
+            return "write";
+        case "exam":
+        case "study_block":
+        case "reminder":
+        case "class":
+        case "custom":
+        default:
+            return "review";
+    }
 }
 // ---------------- XP / streak ----------------
 export async function recordXp(action, points) {
@@ -1169,6 +1624,32 @@ export async function recordXp(action, points) {
     };
     db.prepare("insert into xp_events (id, action, points, created_at) values (@id, @action, @points, @created_at)").run(row);
     await enqueue("xp_events", row.id, "upsert", row);
+}
+export async function upsertRewardPointsEvent(input, opts = {}) {
+    const db = await getDb();
+    const row = {
+        id: input.id,
+        action: input.action ?? "unknown",
+        points: input.points ?? 0,
+        created_at: input.created_at ?? nowIso(),
+    };
+    db.prepare(`insert into reward_points_events (id, action, points, created_at)
+     values (@id, @action, @points, @created_at)
+     on conflict(id) do update set
+       action=excluded.action, points=excluded.points, created_at=excluded.created_at`).run(row);
+    if (!opts.skipOutbox)
+        await enqueue("reward_points_events", row.id, "upsert", row);
+    return row;
+}
+export async function recordRewardPoints(action, points) {
+    if (points <= 0)
+        return;
+    await upsertRewardPointsEvent({
+        id: ulid("rp"),
+        action,
+        points,
+        created_at: nowIso(),
+    });
 }
 export async function totalXpToday() {
     const db = await getDb();
@@ -1185,6 +1666,41 @@ export async function totalXp() {
         .prepare("select coalesce(sum(points), 0) as t from xp_events")
         .get();
     return row.t;
+}
+export async function totalRewardPoints() {
+    const db = await getDb();
+    const row = db
+        .prepare("select coalesce(sum(points), 0) as t from reward_points_events")
+        .get();
+    return row.t;
+}
+export async function spendRewardPoints(action, cost) {
+    if (cost <= 0)
+        return false;
+    const available = await totalRewardPoints();
+    if (available < cost)
+        return false;
+    await upsertRewardPointsEvent({
+        id: ulid("rp"),
+        action,
+        points: -Math.abs(cost),
+        created_at: nowIso(),
+    });
+    return true;
+}
+export async function goatUpgradePurchases() {
+    const db = await getDb();
+    const rows = db
+        .prepare(`select action from reward_points_events
+       where action like 'goatUpgrade:%' and points < 0`)
+        .all();
+    const out = new Set();
+    for (const r of rows) {
+        const id = r.action.slice("goatUpgrade:".length).trim();
+        if (id)
+            out.add(id);
+    }
+    return out;
 }
 /**
  * Returns daily XP totals for the last `days` days (most recent first).
@@ -1238,15 +1754,209 @@ export async function markOutboxSynced(ids) {
     const db = await getDb();
     const ts = nowIso();
     const stmt = db.prepare("update sync_outbox set synced_at = ? where id = ?");
+    const pushState = db.prepare("update sync_state set last_pushed_at = ? where id = 1");
     const tx = db.transaction((arr) => {
         for (const id of arr)
             stmt.run(ts, id);
+        pushState.run(ts);
     });
     tx(ids);
 }
 export async function recordOutboxFailure(id, error) {
     const db = await getDb();
     db.prepare("update sync_outbox set retry_count = retry_count + 1, last_error = ? where id = ?").run(error, id);
+}
+/**
+ * Clears `last_error` and resets `retry_count` so failed rows are retried as
+ * if fresh — useful after the cloud schema is fixed and we want sync to
+ * re-attempt previously stuck pushes immediately.
+ */
+export async function resetOutboxErrors() {
+    const db = await getDb();
+    const before = db
+        .prepare("select count(*) as c from sync_outbox where synced_at is null and last_error is not null")
+        .get().c;
+    db.prepare(`update sync_outbox set retry_count = 0, last_error = null
+     where synced_at is null and last_error is not null`).run();
+    return before;
+}
+/**
+ * Re-enqueues every existing local row into `sync_outbox` so the next push
+ * uploads them. Used when the outbox got out of sync with reality (e.g. rows
+ * created via `skipOutbox`, dev tooling, or a previous app version that
+ * marked things synced incorrectly).
+ *
+ * Strategy: delete any pending (un-synced) outbox row whose `(entity_type,
+ * entity_id)` matches a live local row, then insert a fresh "upsert"
+ * envelope per live row. Already-synced outbox history is left intact.
+ */
+export async function reenqueueAllLocalRows() {
+    const db = await getDb();
+    const ts = nowIso();
+    let total = 0;
+    // Order matters for FK safety on the cloud. Mirrors APPLY_ORDER.
+    // We intentionally include soft-deleted rows: Postgres FKs don't care
+    // about `deleted_at`, and a child row (e.g. flashcard_set) may still
+    // point at a soft-deleted parent (note). The cloud stores the parent
+    // as a soft-deleted record and the FK is satisfied.
+    const SPECS = [
+        { entity_type: "classes", table: "classes", pk: "id" },
+        {
+            entity_type: "notes",
+            table: "notes",
+            pk: "id",
+            fks: [{ column: "class_id", parentTable: "classes", nullable: true }],
+        },
+        {
+            entity_type: "attachments",
+            table: "attachments",
+            pk: "id",
+            fks: [{ column: "note_id", parentTable: "notes", nullable: true }],
+        },
+        {
+            entity_type: "flashcard_sets",
+            table: "flashcard_sets",
+            pk: "id",
+            fks: [{ column: "note_id", parentTable: "notes", nullable: false }],
+        },
+        {
+            entity_type: "flashcards",
+            table: "flashcards",
+            pk: "id",
+            fks: [
+                { column: "set_id", parentTable: "flashcard_sets", nullable: false },
+            ],
+        },
+        {
+            entity_type: "quizzes",
+            table: "quizzes",
+            pk: "id",
+            fks: [{ column: "note_id", parentTable: "notes", nullable: false }],
+        },
+        {
+            entity_type: "quiz_questions",
+            table: "quiz_questions",
+            pk: "id",
+            fks: [{ column: "quiz_id", parentTable: "quizzes", nullable: false }],
+        },
+        {
+            entity_type: "quiz_attempts",
+            table: "quiz_attempts",
+            pk: "id",
+            fks: [{ column: "quiz_id", parentTable: "quizzes", nullable: false }],
+        },
+        {
+            entity_type: "quiz_sessions",
+            table: "quiz_sessions",
+            pk: "quiz_id",
+            fks: [{ column: "quiz_id", parentTable: "quizzes", nullable: false }],
+        },
+        { entity_type: "study_plans", table: "study_plans", pk: "id" },
+        {
+            entity_type: "study_tasks",
+            table: "study_tasks",
+            pk: "id",
+            fks: [
+                { column: "plan_id", parentTable: "study_plans", nullable: true },
+                { column: "note_id", parentTable: "notes", nullable: true },
+            ],
+        },
+        {
+            entity_type: "calendar_events",
+            table: "calendar_events",
+            pk: "id",
+            fks: [{ column: "class_id", parentTable: "classes", nullable: true }],
+        },
+        {
+            entity_type: "checklist_items",
+            table: "checklist_items",
+            pk: "id",
+            fks: [
+                {
+                    column: "event_id",
+                    parentTable: "calendar_events",
+                    nullable: false,
+                },
+            ],
+        },
+        { entity_type: "xp_events", table: "xp_events", pk: "id" },
+    ];
+    // Pre-load every parent table's IDs so FK checks are O(1) lookups.
+    // Includes soft-deleted rows on purpose: those parents will be uploaded
+    // by an earlier SPEC iteration so the cloud row exists.
+    const liveIds = {};
+    for (const spec of SPECS) {
+        try {
+            const rows = db
+                .prepare(`select ${spec.pk} as id from ${spec.table}`)
+                .all();
+            liveIds[spec.table] = new Set(rows.map((r) => String(r.id ?? "")).filter(Boolean));
+        }
+        catch {
+            liveIds[spec.table] = new Set();
+        }
+    }
+    const insertOutbox = db.prepare(`insert into sync_outbox (
+       id, entity_type, entity_id, operation, payload_json,
+       client_updated_at, created_at, retry_count
+     ) values (?, ?, ?, 'upsert', ?, ?, ?, 0)`);
+    const deletePending = db.prepare(`delete from sync_outbox
+     where entity_type = ? and entity_id = ? and synced_at is null`);
+    let orphansSkipped = 0;
+    for (const spec of SPECS) {
+        let exists = true;
+        try {
+            db.prepare(`select 1 from ${spec.table} limit 0`).all();
+        }
+        catch {
+            exists = false; // table missing on this device (older schema)
+        }
+        if (!exists)
+            continue;
+        const rows = db
+            .prepare(`select * from ${spec.table}`)
+            .all();
+        const tx = db.transaction((batch) => {
+            for (const row of batch) {
+                const id = String(row[spec.pk] ?? "");
+                if (!id)
+                    continue;
+                // Skip dangling rows whose required FK doesn't resolve locally —
+                // pushing them would just reproduce the FK violation on Supabase.
+                let orphan = false;
+                for (const fk of spec.fks ?? []) {
+                    const raw = row[fk.column];
+                    const fkVal = raw === null || raw === undefined || raw === "" ? null : String(raw);
+                    if (fkVal === null) {
+                        if (!fk.nullable) {
+                            orphan = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    if (!liveIds[fk.parentTable]?.has(fkVal)) {
+                        orphan = true;
+                        break;
+                    }
+                }
+                if (orphan) {
+                    // Drop any stale envelope so it stops blocking sync status.
+                    deletePending.run(spec.entity_type, id);
+                    orphansSkipped += 1;
+                    continue;
+                }
+                deletePending.run(spec.entity_type, id);
+                insertOutbox.run(`obx_${spec.entity_type}_${id}_${ts}_${total + 1}`, spec.entity_type, id, JSON.stringify(row), ts, ts);
+                total += 1;
+            }
+        });
+        if (rows.length)
+            tx(rows);
+    }
+    if (orphansSkipped > 0) {
+        console.warn(`[sync] skipped ${orphansSkipped} orphaned local rows (missing parent FK)`);
+    }
+    return total;
 }
 void getDeviceId; // re-export for the sync adapter
 //# sourceMappingURL=repositories.js.map

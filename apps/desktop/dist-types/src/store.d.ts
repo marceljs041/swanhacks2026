@@ -2,10 +2,13 @@ import type { ClassRow, FlashcardRow, FlashcardSetRow, NoteRow, QuizRow, StudyTa
 import type { ThemeName } from "@studynest/ui";
 import { type Profile } from "./lib/profile.js";
 import { type WidgetId } from "./lib/rightPanelLayout.js";
+import { type CalendarView } from "./lib/calendarPrefs.js";
 export type View = {
     kind: "home";
 } | {
     kind: "notes";
+} | {
+    kind: "points";
 } | {
     kind: "allNotes";
 } | {
@@ -30,11 +33,13 @@ export type View = {
 } | {
     kind: "quiz";
     quizId: string;
+    mode?: QuizMode;
 } | {
     kind: "calendar";
 } | {
     kind: "settings";
 };
+export type QuizMode = "take" | "results" | "review";
 interface AppState {
     view: View;
     classes: ClassRow[];
@@ -65,11 +70,56 @@ interface AppState {
      */
     classesDetailPanelOpen: boolean;
     /**
+     * Flashcards hub / review: when the deck detail column is visible in the
+     * third track (vs the global widget RightPanel). Same width behavior as
+     * `classesDetailPanelOpen`.
+     */
+    flashcardsDetailPanelOpen: boolean;
+    /**
      * Flashcards screens only: which deck powers the right-hand
      * `DeckDetailRail`. Persists across hub ↔ review so opening a deck on
      * the hub keeps it pinned when you start a review session.
      */
     selectedDeckId: string | null;
+    /**
+     * Quizzes hub: when a quiz is selected the third column shows
+     * `QuizDetailRail` (wider third track, like Flashcards / Classes).
+     */
+    quizzesDetailPanelOpen: boolean;
+    /** Currently selected quiz on the hub / session screen. */
+    selectedQuizId: string | null;
+    /**
+     * Calendar feature state.
+     *
+     * `calendarDetailPanelOpen` is true while an event is selected so the
+     * app grid widens for `EventDetailRail`. When false, Calendar shows the
+     * same global `RightPanel` as Home (via `RightPanel calendarSwap`).
+     */
+    calendarView: CalendarView;
+    /** `YYYY-MM-DD` of the day currently in focus. Drives the visible range. */
+    calendarCursor: string;
+    calendarSelectedEventId: string | null;
+    calendarDetailPanelOpen: boolean;
+    /** When set, the AddEditEventDrawer opens prefilled with these fields. */
+    calendarComposer: null | {
+        mode: "create" | "edit";
+        eventId?: string;
+        prefill?: Partial<{
+            title: string;
+            type: "class" | "exam" | "study_block" | "quiz" | "flashcards" | "assignment" | "reading" | "reminder" | "custom";
+            class_id: string | null;
+            note_id: string | null;
+            quiz_id: string | null;
+            flashcard_set_id: string | null;
+            start_at: string;
+            end_at: string;
+            all_day: boolean;
+            location: string;
+            description: string;
+        }>;
+    };
+    /** When true, Calendar renders the StudyPlanGeneratorModal as an overlay. */
+    calendarPlanGeneratorOpen: boolean;
     setView: (v: View) => void;
     setClasses: (c: ClassRow[]) => void;
     setNotes: (n: NoteRow[]) => void;
@@ -88,7 +138,16 @@ interface AppState {
     setFocusedClass: (id: string | null) => void;
     setActiveTimer: (t: TimerSession | null) => void;
     setClassesDetailPanelOpen: (open: boolean) => void;
+    setFlashcardsDetailPanelOpen: (open: boolean) => void;
     setSelectedDeck: (id: string | null) => void;
+    setQuizzesDetailPanelOpen: (open: boolean) => void;
+    setSelectedQuiz: (id: string | null) => void;
+    setCalendarView: (view: CalendarView) => void;
+    setCalendarCursor: (iso: string) => void;
+    setCalendarSelectedEvent: (id: string | null) => void;
+    setCalendarDetailPanelOpen: (open: boolean) => void;
+    setCalendarComposer: (c: AppState["calendarComposer"]) => void;
+    setCalendarPlanGeneratorOpen: (open: boolean) => void;
 }
 export type ReviewMode = "due" | "cram" | "weak" | "audio";
 export type TimerMode = "focus" | "shortBreak" | "longBreak";

@@ -56,6 +56,12 @@ export const TargetIcon = make(_jsxs(_Fragment, { children: [_jsx("circle", { cx
 export const GraphIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M4 19h16" }), _jsx("path", { d: "M6 16V9" }), _jsx("path", { d: "M11 16V5" }), _jsx("path", { d: "M16 16v-4" })] }));
 export const LightningIcon = make(_jsx("path", { d: "M13 2 4 14h6l-1 8 9-12h-6l1-8Z" }));
 export const RestartIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M4 4v5h5" }), _jsx("path", { d: "M4 9a8 8 0 1 1 1.5 7" })] }));
+export const PinIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M12 21s-6-5.4-6-11a6 6 0 1 1 12 0c0 5.6-6 11-6 11Z" }), _jsx("circle", { cx: "12", cy: "10", r: "2.4" })] }));
+export const BellIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M6 16V11a6 6 0 1 1 12 0v5l1.5 2H4.5L6 16Z" }), _jsx("path", { d: "M10 20a2 2 0 0 0 4 0" })] }));
+export const LockIcon = make(_jsxs(_Fragment, { children: [_jsx("rect", { x: "5", y: "10", width: "14", height: "10", rx: "2" }), _jsx("path", { d: "M8 10V7a4 4 0 0 1 8 0v3" })] }));
+export const LinkIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M10 14a4 4 0 0 1 0-5.7l3.2-3.2a4 4 0 1 1 5.7 5.7l-1.4 1.4" }), _jsx("path", { d: "M14 10a4 4 0 0 1 0 5.7l-3.2 3.2a4 4 0 1 1-5.7-5.7L6.5 12" })] }));
+export const RepeatIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M4 11V9a3 3 0 0 1 3-3h11" }), _jsx("path", { d: "m15 3 3 3-3 3" }), _jsx("path", { d: "M20 13v2a3 3 0 0 1-3 3H6" }), _jsx("path", { d: "m9 21-3-3 3-3" })] }));
+export const ListIcon = make(_jsxs(_Fragment, { children: [_jsx("path", { d: "M8 6h12M8 12h12M8 18h12" }), _jsx("circle", { cx: "4", cy: "6", r: "1" }), _jsx("circle", { cx: "4", cy: "12", r: "1" }), _jsx("circle", { cx: "4", cy: "18", r: "1" })] }));
 /**
  * The Note Goat mascot. Vector-only so it scales crisp in any theme.
  * Used in the sidebar logo and the home hero. Colours follow the active
