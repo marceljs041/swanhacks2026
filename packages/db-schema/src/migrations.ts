@@ -8,6 +8,14 @@ export interface Migration {
   version: number;
   name: string;
   sql: string;
+  /**
+   * When true, swallow "duplicate column name" errors so this migration
+   * is a no-op on fresh installs (where `CREATE_TABLES_SQL` already
+   * includes the column added here) but still applies cleanly on
+   * existing devices that ran v1 before the column was introduced.
+   * Use only for additive `alter table … add column …` migrations.
+   */
+  idempotentAddColumn?: boolean;
 }
 
 export const MIGRATIONS: Migration[] = [
@@ -15,6 +23,20 @@ export const MIGRATIONS: Migration[] = [
     version: 1,
     name: "init",
     sql: `${CREATE_TABLES_SQL}\n${CREATE_INDEXES_SQL}`,
+  },
+  {
+    // SQLite has no `add column if not exists`; the runner only re-runs
+    // migrations whose version exceeds the recorded max, so this fires
+    // exactly once per device. We still wrap the alter in a savepoint
+    // expression that swallows duplicate-column errors so manually
+    // patched databases (e.g. a dev who hand-added the column) don't
+    // brick on first start.
+    version: 2,
+    name: "notes_icon",
+    sql: /* sql */ `
+      alter table notes add column icon text not null default 'note';
+    `,
+    idempotentAddColumn: true,
   },
 ];
 
@@ -43,7 +65,17 @@ export async function runMigrations(runner: MigrationRunner): Promise<void> {
   const applied = await runner.getAppliedVersion();
   for (const m of MIGRATIONS) {
     if (m.version <= applied) continue;
-    await runner.exec(m.sql);
+    try {
+      await runner.exec(m.sql);
+    } catch (err) {
+      const msg = String((err as Error)?.message ?? err);
+      // Tolerated when explicitly opted in: see Migration.idempotentAddColumn.
+      if (m.idempotentAddColumn && /duplicate column name/i.test(msg)) {
+        // Column already present (fresh install) — treat as applied.
+      } else {
+        throw err;
+      }
+    }
     await runner.recordVersion(m.version, m.name);
   }
 }

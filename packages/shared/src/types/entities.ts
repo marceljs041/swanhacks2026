@@ -17,6 +17,8 @@ export interface NoteRow {
   content_markdown: string;
   summary: string | null;
   tags_json: string;
+  /** Icon key (see apps/desktop/src/lib/noteIcons.tsx). Defaults to "note". */
+  icon: string;
   created_at: Iso8601;
   updated_at: Iso8601;
   deleted_at: Iso8601 | null;

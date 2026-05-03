@@ -10,6 +10,12 @@ import type {
 } from "@studynest/shared";
 import type { ThemeName } from "@studynest/ui";
 import { applyTheme, getStoredTheme } from "./lib/theme.js";
+import { getProfile, saveProfile, type Profile } from "./lib/profile.js";
+import {
+  getRightPanelLayout,
+  saveRightPanelLayout,
+  type WidgetId,
+} from "./lib/rightPanelLayout.js";
 
 export type View =
   | { kind: "home" }
@@ -39,6 +45,14 @@ interface AppState {
   xpToday: number;
   streak: number;
   theme: ThemeName;
+  profile: Profile;
+  rightPanelWidgets: WidgetId[];
+  /** Right-panel "Focus class" filter — when set, deadlines/calendar/today
+   * widgets scope themselves to tasks tied to notes in this class. */
+  focusedClassId: string | null;
+  /** Active study-timer session, or null when idle. Lives in the store so
+   * the timer keeps running across view changes. */
+  activeTimer: TimerSession | null;
 
   setView: (v: View) => void;
   setClasses: (c: ClassRow[]) => void;
@@ -53,6 +67,24 @@ interface AppState {
   setSidecar: (loaded: boolean, model: string | null) => void;
   setXp: (xp: number, streak: number) => void;
   setTheme: (t: ThemeName) => void;
+  setProfile: (p: Profile) => void;
+  setRightPanelWidgets: (ids: WidgetId[]) => void;
+  setFocusedClass: (id: string | null) => void;
+  setActiveTimer: (t: TimerSession | null) => void;
+}
+
+export type TimerMode = "focus" | "shortBreak" | "longBreak";
+
+export interface TimerSession {
+  mode: TimerMode;
+  /** ms epoch — when the timer is scheduled to finish. Drives countdown. */
+  endsAt: number;
+  /** Original requested duration so the progress ring has a reference. */
+  durationMs: number;
+  /** When paused, remaining ms at the moment of pause; null while running. */
+  pausedRemainingMs: number | null;
+  /** Optional task this session is "for" — kept loose so users can switch. */
+  taskId: string | null;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -71,6 +103,10 @@ export const useApp = create<AppState>((set) => ({
   xpToday: 0,
   streak: 0,
   theme: getStoredTheme(),
+  profile: getProfile(),
+  rightPanelWidgets: getRightPanelLayout().activeIds,
+  focusedClassId: null,
+  activeTimer: null,
 
   setView: (view) => set({ view }),
   setClasses: (classes) => set({ classes }),
@@ -88,4 +124,14 @@ export const useApp = create<AppState>((set) => ({
     applyTheme(theme);
     set({ theme });
   },
+  setProfile: (profile) => {
+    saveProfile(profile);
+    set({ profile });
+  },
+  setRightPanelWidgets: (rightPanelWidgets) => {
+    saveRightPanelLayout({ activeIds: rightPanelWidgets });
+    set({ rightPanelWidgets });
+  },
+  setFocusedClass: (focusedClassId) => set({ focusedClassId }),
+  setActiveTimer: (activeTimer) => set({ activeTimer }),
 }));

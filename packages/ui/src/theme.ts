@@ -262,9 +262,15 @@ export const motion = {
 /* CSS variable wiring                                                */
 /* ------------------------------------------------------------------ */
 
-/** Convert a camelCase token name into a `--color-foo-bar` CSS variable. */
+/**
+ * Build the CSS variable name for a palette token.
+ *
+ * We keep the original camelCase so templates can reference tokens verbatim
+ * (`var(--color-onPrimary)`, `var(--color-primarySoft)`, etc.). Kebab-casing
+ * here would silently break any rule that uses the camelCase form.
+ */
 function cssVarName(token: string): string {
-  return `--color-${token.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`;
+  return `--color-${token}`;
 }
 
 /** Returns a `key: value` map of the CSS variables for a palette. */

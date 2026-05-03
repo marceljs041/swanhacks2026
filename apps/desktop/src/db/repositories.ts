@@ -7,6 +7,7 @@
  * cloud (during sync pull) — otherwise we'd echo the change back.
  */
 import {
+  type AttachmentRow,
   type ClassRow,
   type FlashcardRow,
   type FlashcardSetRow,
@@ -123,6 +124,7 @@ export async function upsertNote(
     content_markdown: input.content_markdown ?? "",
     summary: input.summary ?? null,
     tags_json: input.tags_json ?? "[]",
+    icon: input.icon ?? "note",
     created_at: input.created_at ?? ts,
     updated_at: ts,
     deleted_at: input.deleted_at ?? null,
@@ -130,13 +132,13 @@ export async function upsertNote(
   };
   db.prepare(
     `insert into notes (id, class_id, title, content_markdown, summary, tags_json,
-                        created_at, updated_at, deleted_at, sync_version)
+                        icon, created_at, updated_at, deleted_at, sync_version)
      values (@id, @class_id, @title, @content_markdown, @summary, @tags_json,
-             @created_at, @updated_at, @deleted_at, @sync_version)
+             @icon, @created_at, @updated_at, @deleted_at, @sync_version)
      on conflict(id) do update set
        class_id=excluded.class_id, title=excluded.title,
        content_markdown=excluded.content_markdown, summary=excluded.summary,
-       tags_json=excluded.tags_json, updated_at=excluded.updated_at,
+       tags_json=excluded.tags_json, icon=excluded.icon, updated_at=excluded.updated_at,
        deleted_at=excluded.deleted_at, sync_version=excluded.sync_version`,
   ).run(row);
   if (!opts.skipOutbox) await enqueue("notes", row.id, "upsert", row);
@@ -148,6 +150,229 @@ export async function softDeleteNote(id: string): Promise<void> {
   const ts = nowIso();
   db.prepare("update notes set deleted_at = ?, updated_at = ? where id = ?").run(ts, ts, id);
   await enqueue("notes", id, "delete", { id, deleted_at: ts });
+}
+
+/**
+ * Counts of notes updated at or after `iso`. Used for the "This Week"
+ * smart collection — `iso` is typically `now - 7d` truncated to midnight.
+ */
+export async function notesUpdatedSince(iso: string): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      "select count(*) as c from notes where deleted_at is null and updated_at >= ?",
+    )
+    .get(iso) as { c: number };
+  return row.c;
+}
+
+/**
+ * Counts notes whose JSON tag array contains `tag` (case-insensitive
+ * substring match — `tags_json` is a tiny TEXT blob, fine for hundreds
+ * of notes). Powers the "Exam Prep" chip.
+ */
+export async function notesByTagLike(tag: string): Promise<number> {
+  const db = await getDb();
+  const like = `%${tag.toLowerCase()}%`;
+  const row = db
+    .prepare(
+      "select count(*) as c from notes where deleted_at is null and lower(tags_json) like ?",
+    )
+    .get(like) as { c: number };
+  return row.c;
+}
+
+/**
+ * Counts distinct notes that have at least one non-deleted attachment of
+ * the given type. Drives the "Audio Notes" / "Board Scans" chips.
+ */
+export async function notesWithAttachmentType(type: AttachmentRow["type"]): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      `select count(distinct n.id) as c
+       from notes n
+       join attachments a on a.note_id = n.id
+       where n.deleted_at is null and a.deleted_at is null and a.type = ?`,
+    )
+    .get(type) as { c: number };
+  return row.c;
+}
+
+/**
+ * Notes whose `updated_at` is older than `iso`. Stand-in for "Needs
+ * Review" until we record an explicit "last opened" timestamp.
+ */
+export async function notesNotOpenedSince(iso: string): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      "select count(*) as c from notes where deleted_at is null and updated_at < ?",
+    )
+    .get(iso) as { c: number };
+  return row.c;
+}
+
+/**
+ * Recent notes that have neither a flashcard set nor a quiz attached.
+ * Drives the "needs study tools" tile and seeds the AI Ready Queue.
+ */
+export async function notesMissingStudyTools(limit = 10): Promise<NoteRow[]> {
+  const db = await getDb();
+  return db
+    .prepare(
+      `select n.* from notes n
+       where n.deleted_at is null
+         and not exists (
+           select 1 from flashcard_sets fs
+           where fs.note_id = n.id and fs.deleted_at is null
+         )
+         and not exists (
+           select 1 from quizzes qz
+           where qz.note_id = n.id and qz.deleted_at is null
+         )
+       order by n.updated_at desc
+       limit ?`,
+    )
+    .all(limit) as NoteRow[];
+}
+
+/**
+ * Notes whose AI summary hasn't been generated yet but which have
+ * enough body to make summarisation worthwhile. Powers the "Summarize"
+ * action in the AI Ready Queue.
+ */
+export async function notesNeedingSummary(limit = 10): Promise<NoteRow[]> {
+  const db = await getDb();
+  return db
+    .prepare(
+      `select * from notes
+       where deleted_at is null
+         and (summary is null or summary = '')
+         and length(content_markdown) > 200
+       order by updated_at desc
+       limit ?`,
+    )
+    .all(limit) as NoteRow[];
+}
+
+/**
+ * Audio attachments whose transcript hasn't been generated yet — the
+ * "needs transcription" tile counts these.
+ */
+export async function audioAttachmentsMissingTranscript(): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      `select count(*) as c from attachments
+       where deleted_at is null and type = 'audio'
+         and (transcript is null or transcript = '')`,
+    )
+    .get() as { c: number };
+  return row.c;
+}
+
+/**
+ * Notes (distinct entity_ids) with pending writes in the sync outbox.
+ * Drives the "unsynced changes" tile.
+ */
+export async function unsyncedNotesCount(): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      `select count(distinct entity_id) as c from sync_outbox
+       where entity_type = 'notes' and synced_at is null`,
+    )
+    .get() as { c: number };
+  return row.c;
+}
+
+/**
+ * Existence checks for the AI Ready Queue heuristic — lets the UI pick
+ * the next-best AI action per note (summarise → flashcards → quiz).
+ */
+export async function noteHasFlashcards(noteId: string): Promise<boolean> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      "select 1 as x from flashcard_sets where note_id = ? and deleted_at is null limit 1",
+    )
+    .get(noteId);
+  return !!row;
+}
+
+export async function noteHasQuiz(noteId: string): Promise<boolean> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      "select 1 as x from quizzes where note_id = ? and deleted_at is null limit 1",
+    )
+    .get(noteId);
+  return !!row;
+}
+
+/**
+ * Lightweight LIKE search across note title + body. Good enough for the
+ * home hero typeahead — we keep it bounded so a long-running query never
+ * blocks paint.
+ */
+export async function searchNotes(query: string, limit = 8): Promise<NoteRow[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const db = await getDb();
+  const like = `%${trimmed.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+  return db
+    .prepare(
+      `select * from notes
+       where deleted_at is null
+         and (title like ? escape '\\' or content_markdown like ? escape '\\')
+       order by updated_at desc
+       limit ?`,
+    )
+    .all(like, like, limit) as NoteRow[];
+}
+
+// ---------------- Attachments ----------------
+
+export async function upsertAttachment(
+  input: Partial<AttachmentRow> & {
+    note_id: string;
+    type: AttachmentRow["type"];
+    local_uri: string;
+  },
+  opts: WriteOpts = {},
+): Promise<AttachmentRow> {
+  const db = await getDb();
+  const ts = nowIso();
+  const row: AttachmentRow = {
+    id: input.id ?? ulid("att"),
+    note_id: input.note_id,
+    type: input.type,
+    local_uri: input.local_uri,
+    remote_url: input.remote_url ?? null,
+    file_name: input.file_name ?? null,
+    mime_type: input.mime_type ?? null,
+    size_bytes: input.size_bytes ?? null,
+    transcript: input.transcript ?? null,
+    extracted_text: input.extracted_text ?? null,
+    created_at: input.created_at ?? ts,
+    updated_at: ts,
+    deleted_at: input.deleted_at ?? null,
+  };
+  db.prepare(
+    `insert into attachments
+       (id, note_id, type, local_uri, remote_url, file_name, mime_type,
+        size_bytes, transcript, extracted_text, created_at, updated_at, deleted_at)
+     values (@id, @note_id, @type, @local_uri, @remote_url, @file_name, @mime_type,
+             @size_bytes, @transcript, @extracted_text, @created_at, @updated_at, @deleted_at)
+     on conflict(id) do update set
+       type=excluded.type, local_uri=excluded.local_uri, remote_url=excluded.remote_url,
+       file_name=excluded.file_name, mime_type=excluded.mime_type, size_bytes=excluded.size_bytes,
+       transcript=excluded.transcript, extracted_text=excluded.extracted_text,
+       updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
+  ).run(row);
+  if (!opts.skipOutbox) await enqueue("attachments", row.id, "upsert", row);
+  return row;
 }
 
 // ---------------- Flashcards ----------------
@@ -336,6 +561,39 @@ export async function listQuizQuestions(quizId: string): Promise<QuizQuestionRow
     .all(quizId) as QuizQuestionRow[];
 }
 
+export interface QuizStats {
+  taken: number;
+  /** Average score as a percentage (0–100), rounded. 0 when there are no attempts. */
+  avgPct: number;
+  /** Best single-attempt score as a percentage (0–100), rounded. */
+  best: number;
+}
+
+/**
+ * Aggregates over all `quiz_attempts` rows. We average per-attempt
+ * percentages so a single 100/100 attempt isn't drowned out by a long
+ * 70/100 attempt.
+ */
+export async function quizStats(): Promise<QuizStats> {
+  const db = await getDb();
+  const rows = db
+    .prepare("select score, total from quiz_attempts where total > 0")
+    .all() as { score: number; total: number }[];
+  if (rows.length === 0) return { taken: 0, avgPct: 0, best: 0 };
+  let pctSum = 0;
+  let best = 0;
+  for (const r of rows) {
+    const pct = (r.score / r.total) * 100;
+    pctSum += pct;
+    if (pct > best) best = pct;
+  }
+  return {
+    taken: rows.length,
+    avgPct: Math.round(pctSum / rows.length),
+    best: Math.round(best),
+  };
+}
+
 export async function recordQuizAttempt(args: {
   quiz_id: string;
   score: number;
@@ -461,6 +719,34 @@ export async function totalXpToday(): Promise<number> {
     .prepare("select coalesce(sum(points), 0) as t from xp_events where created_at >= ?")
     .get(start.toISOString()) as { t: number };
   return row.t;
+}
+
+export async function totalXp(): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare("select coalesce(sum(points), 0) as t from xp_events")
+    .get() as { t: number };
+  return row.t;
+}
+
+/**
+ * Returns daily XP totals for the last `days` days (most recent first).
+ * Used by the activity heatmap so we don't ship the full event log.
+ */
+export async function xpByDay(days: number): Promise<Array<{ date: string; points: number }>> {
+  const db = await getDb();
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - (days - 1));
+  const rows = db
+    .prepare(
+      `select date(created_at) as date, coalesce(sum(points), 0) as points
+       from xp_events where created_at >= ?
+       group by date(created_at)
+       order by date desc`,
+    )
+    .all(since.toISOString()) as Array<{ date: string; points: number }>;
+  return rows;
 }
 
 export async function currentStreak(): Promise<number> {

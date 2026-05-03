@@ -156,6 +156,107 @@ export const PlusIcon = make(<><path d="M12 5v14M5 12h14" /></>);
 export const MoreIcon = make(<><circle cx="6" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18" cy="12" r="1.2" /></>);
 export const CheckIcon = make(<path d="m5 12 5 5 9-11" />);
 export const ArrowRightIcon = make(<><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>);
+export const ArrowLeftIcon = make(<><path d="M19 12H5" /><path d="m11 6-6 6 6 6" /></>);
+export const XIcon = make(<><path d="M6 6l12 12" /><path d="M18 6 6 18" /></>);
+
+export const CameraIcon = make(
+  <>
+    <path d="M4 8h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </>,
+);
+
+export const UploadIcon = make(
+  <>
+    <path d="M12 16V4" />
+    <path d="m7 9 5-5 5 5" />
+    <path d="M5 17v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2" />
+  </>,
+);
+
+export const TrashIcon = make(
+  <>
+    <path d="M4 7h16" />
+    <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    <path d="M6 7v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" />
+    <path d="M10 11v6M14 11v6" />
+  </>,
+);
+
+export const EyeIcon = make(
+  <>
+    <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </>,
+);
+
+export const BeakerIcon = make(
+  <>
+    <path d="M9 3h6" />
+    <path d="M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-9V3" />
+    <path d="M7.5 14h9" />
+  </>,
+);
+
+export const GlobeIcon = make(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18" />
+    <path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </>,
+);
+
+export const AtomIcon = make(
+  <>
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <ellipse cx="12" cy="12" rx="9" ry="3.5" />
+    <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)" />
+    <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(120 12 12)" />
+  </>,
+);
+
+export const BookIcon = make(
+  <>
+    <path d="M5 4h9a3 3 0 0 1 3 3v13" />
+    <path d="M5 4v14a2 2 0 0 0 2 2h10" />
+    <path d="M9 8h5M9 12h5" />
+  </>,
+);
+
+export const MaskIcon = make(
+  <>
+    <path d="M4 6c2-1 4-1 8-1s6 0 8 1c0 6-3 12-8 12S4 12 4 6Z" />
+    <circle cx="9" cy="11" r="1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="11" r="1" fill="currentColor" stroke="none" />
+    <path d="M10 15c.7.5 1.3.7 2 .7s1.3-.2 2-.7" />
+  </>,
+);
+
+export const WarningIcon = make(
+  <>
+    <path d="M12 3 2.5 20a1 1 0 0 0 .9 1.5h17.2a1 1 0 0 0 .9-1.5L12 3Z" />
+    <path d="M12 10v5" />
+    <path d="M12 18h.01" />
+  </>,
+);
+
+export const BoltIcon = make(<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />);
+
+export const CloudCheckIcon = make(
+  <>
+    <path d="M7 18h10a4 4 0 0 0 .9-7.9 6 6 0 0 0-11.8 1.2A4 4 0 0 0 7 18Z" />
+    <path d="m9.5 13.5 2 2 3.5-4" />
+  </>,
+);
+
+export const CloudOffIcon = make(
+  <>
+    <path d="M3 3l18 18" />
+    <path d="M7 18h10a4 4 0 0 0 1.6-7.7" />
+    <path d="M6 8a6 6 0 0 1 11 1.5" />
+    <path d="M5.4 11A4 4 0 0 0 7 18" />
+  </>,
+);
 
 /**
  * The Note Goat mascot. Vector-only so it scales crisp in any theme.

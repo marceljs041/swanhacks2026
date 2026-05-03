@@ -12,6 +12,7 @@ import { Quiz } from "./components/Quiz.js";
 import { Calendar } from "./components/Calendar.js";
 import { Settings } from "./components/Settings.js";
 import { RightPanel } from "./components/RightPanel.js";
+import { Onboarding } from "./components/Onboarding.js";
 import { useApp } from "./store.js";
 import { desktopSyncDb, desktopTransport } from "./sync/adapter.js";
 import { getDb } from "./db/client.js";
@@ -27,6 +28,7 @@ function customMacTitlebar(): boolean {
 export function App() {
   const macCustomChrome = customMacTitlebar();
   const view = useApp((s) => s.view);
+  const onboardedAt = useApp((s) => s.profile.onboardedAt);
   const setSyncStatus = useApp((s) => s.setSyncStatus);
   const setSidecar = useApp((s) => s.setSidecar);
 
@@ -63,6 +65,15 @@ export function App() {
   // The note editor renders its own right panel (AI actions + summary),
   // so we suppress the global one for that view.
   const showRightPanel = view.kind !== "note";
+
+  if (!onboardedAt) {
+    return (
+      <div className={`app-onboarding${macCustomChrome ? " with-custom-titlebar" : ""}`}>
+        {macCustomChrome && <div className="app-titlebar" aria-hidden />}
+        <Onboarding />
+      </div>
+    );
+  }
 
   return (
     <div className={`app${macCustomChrome ? " with-custom-titlebar" : ""}`}>

@@ -1,16 +1,28 @@
 import type { FC, ReactNode } from "react";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   currentStreak,
+  listClasses,
   listDueFlashcards,
   listNotes,
   listTasksForRange,
+  quizStats,
+  recordXp,
+  searchNotes,
   totalXpToday,
+  upsertAttachment,
+  upsertNote,
+  upsertStudyTask,
 } from "../db/repositories.js";
 import { useApp } from "../store.js";
 import { Card } from "./ui/Card.js";
 import { Donut, ProgressRing } from "./ui/ProgressRing.js";
+import { AudioRecorderModal } from "./AudioRecorderModal.js";
 import { BRAND_HERO_URL } from "../lib/brand.js";
+import { firstName } from "../lib/profile.js";
+import { getGreeting } from "../lib/greeting.js";
+import { XP_RULES } from "@studynest/shared";
+import type { ClassRow, NoteRow, StudyTaskRow } from "@studynest/shared";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -35,46 +47,61 @@ export const Home: FC = () => {
   const setDueCards = useApp((s) => s.setDueCards);
   const setWeekTasks = useApp((s) => s.setWeekTasks);
   const setNotes = useApp((s) => s.setNotes);
+  const setClasses = useApp((s) => s.setClasses);
   const xpToday = useApp((s) => s.xpToday);
   const streak = useApp((s) => s.streak);
   const dueCards = useApp((s) => s.dueCards);
   const weekTasks = useApp((s) => s.weekTasks);
   const notes = useApp((s) => s.notes);
 
+  // Quiz stats are home-only state — kept here so refreshing this view
+  // (e.g. after a new attempt) doesn't require a global store slot.
+  const [stats, setStats] = useState<{ taken: number; avgPct: number; best: number }>({
+    taken: 0,
+    avgPct: 0,
+    best: 0,
+  });
+
+  const reloadAll = useCallback(async (): Promise<void> => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inAWeek = new Date(today);
+    inAWeek.setDate(today.getDate() + 7);
+    const [xp, str, due, ns, cls, tasks, qs] = await Promise.all([
+      totalXpToday(),
+      currentStreak(),
+      listDueFlashcards(50),
+      listNotes(null),
+      listClasses(),
+      listTasksForRange(today.toISOString(), inAWeek.toISOString()),
+      quizStats(),
+    ]);
+    setXp(xp, str);
+    setDueCards(due);
+    setNotes(ns);
+    setClasses(cls);
+    setWeekTasks(tasks);
+    setStats(qs);
+  }, [setXp, setDueCards, setNotes, setClasses, setWeekTasks]);
+
   useEffect(() => {
-    void (async () => {
-      const [xp, str, due, ns] = await Promise.all([
-        totalXpToday(),
-        currentStreak(),
-        listDueFlashcards(50),
-        listNotes(null),
-      ]);
-      setXp(xp, str);
-      setDueCards(due);
-      setNotes(ns);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const inAWeek = new Date(today);
-      inAWeek.setDate(today.getDate() + 7);
-      setWeekTasks(await listTasksForRange(today.toISOString(), inAWeek.toISOString()));
-    })();
-  }, [setXp, setDueCards, setWeekTasks, setNotes]);
+    void reloadAll();
+  }, [reloadAll]);
 
   return (
     <main className="main">
-      <TopSearchBar />
       <div className="main-inner">
         <Hero />
-        <QuickActions />
+        <QuickActions onCreated={() => void reloadAll()} />
         <div className="dash-row">
           <StreakCard streak={streak} />
           <ContinueLastNoteCard />
-          <TodaysPlanCard />
+          <TodaysPlanCard tasks={weekTasks} onChange={() => void reloadAll()} />
         </div>
         <div className="dash-row">
           <RecentNotesCard />
           <FlashcardsDueCard dueCount={dueCards.length} />
-          <QuizProgressCard />
+          <QuizProgressCard stats={stats} />
         </div>
         {/* Surface XP today subtly so the value still drives the right panel. */}
         <span style={{ display: "none" }}>{xpToday}{weekTasks.length}{notes.length}</span>
@@ -83,36 +110,36 @@ export const Home: FC = () => {
   );
 };
 
-/* ---- search bar -------------------------------------------------- */
-
-const TopSearchBar: FC = () => (
-  <div className="topbar">
-    <label className="search">
-      <span className="search-icon"><SearchIcon size={16} /></span>
-      <input
-        type="search"
-        placeholder="Search notes, classes, or topics..."
-        aria-label="Search"
-      />
-    </label>
-  </div>
-);
-
 /* ---- hero -------------------------------------------------------- */
 
 const Hero: FC = () => {
-  // TODO: real user name — wire to profile once auth lands.
-  const name = "Marcel";
+  const profileName = useApp((s) => s.profile.name);
+  const name = useMemo(() => firstName(profileName), [profileName]);
+
+  // Recompute the greeting on a low-frequency cadence so a long-open
+  // window crosses bucket boundaries (e.g. afternoon → evening) without
+  // a refresh. We also key the headline on the bucket so the text fades
+  // in when the bucket changes.
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const greeting = useMemo(() => getGreeting(name, now), [name, now]);
+
   return (
     <section className="hero">
-      <div>
-        <h1>
-          Welcome back, {name}{" "}
-          <span aria-hidden style={{ display: "inline-block", transform: "translateY(-2px)" }}>
-            👋
-          </span>
-        </h1>
-        <p>Ready to learn something great today?</p>
+      <div className="hero-main">
+        <HeroSearch />
+        <div className="hero-greeting">
+          <h1 key={greeting.bucket} className="hero-headline">
+            {greeting.headline}{" "}
+            <span aria-hidden style={{ display: "inline-block", transform: "translateY(-2px)" }}>
+              {greeting.emoji}
+            </span>
+          </h1>
+          <p>{greeting.subline}</p>
+        </div>
       </div>
       <div className="hero-illustration" aria-hidden>
         <img
@@ -125,6 +152,194 @@ const Hero: FC = () => {
     </section>
   );
 };
+
+/* ---- hero search ------------------------------------------------- */
+
+const HeroSearch: FC = () => {
+  const setView = useApp((s) => s.setView);
+  const setSelectedNote = useApp((s) => s.setSelectedNote);
+  const setSelectedClass = useApp((s) => s.setSelectedClass);
+  const classes = useApp((s) => s.classes);
+
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<NoteRow[]>([]);
+  const [active, setActive] = useState(0);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  // Used to discard stale async query results when typing fast.
+  const reqId = useRef(0);
+
+  // Live class matches are computed on every keystroke — trivial set size.
+  const classMatches = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return [] as ClassRow[];
+    return classes
+      .filter((c) => c.name.toLowerCase().includes(t) || (c.code ?? "").toLowerCase().includes(t))
+      .slice(0, 4);
+  }, [q, classes]);
+
+  useEffect(() => {
+    if (!q.trim()) {
+      setResults([]);
+      return;
+    }
+    const myReq = ++reqId.current;
+    const t = setTimeout(async () => {
+      const rows = await searchNotes(q, 6);
+      if (myReq === reqId.current) {
+        setResults(rows);
+        setActive(0);
+      }
+    }, 120);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent): void {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const totalRows = results.length + classMatches.length;
+  const showDropdown = open && q.trim().length > 0;
+
+  function openNote(n: NoteRow): void {
+    setSelectedNote(n);
+    setView({ kind: "note", noteId: n.id });
+    setQ("");
+    setOpen(false);
+  }
+  function openClass(c: ClassRow): void {
+    setSelectedClass(c.id);
+    setView({ kind: "notes" });
+    setQ("");
+    setOpen(false);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (!showDropdown || totalRows === 0) {
+      if (e.key === "Enter") {
+        // No results — jump to the notes list so the user can keep browsing.
+        setView({ kind: "notes" });
+        setOpen(false);
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((i) => (i + 1) % totalRows);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => (i - 1 + totalRows) % totalRows);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (active < results.length) {
+        const n = results[active];
+        if (n) openNote(n);
+      } else {
+        const c = classMatches[active - results.length];
+        if (c) openClass(c);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div className="search-wrap" ref={wrapRef}>
+      <label className="search">
+        <span className="search-icon"><SearchIcon size={16} /></span>
+        <input
+          type="search"
+          placeholder="Search notes, classes, or topics..."
+          aria-label="Search"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+        />
+      </label>
+      {showDropdown && (
+        <div className="search-results" role="listbox">
+          {totalRows === 0 ? (
+            <div className="search-empty">
+              No matches. Press <kbd>Enter</kbd> to browse all notes.
+            </div>
+          ) : (
+            <>
+              {results.length > 0 && (
+                <div className="search-group">
+                  <div className="search-group-label">Notes</div>
+                  {results.map((n, i) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active === i}
+                      className={`search-item${active === i ? " active" : ""}`}
+                      onMouseEnter={() => setActive(i)}
+                      onClick={() => openNote(n)}
+                    >
+                      <NoteIcon size={14} />
+                      <span className="search-item-title">{n.title || "Untitled"}</span>
+                      <span className="search-item-sub">
+                        {snippet(n.content_markdown, q)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {classMatches.length > 0 && (
+                <div className="search-group">
+                  <div className="search-group-label">Classes</div>
+                  {classMatches.map((c, i) => {
+                    const idx = results.length + i;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active === idx}
+                        className={`search-item${active === idx ? " active" : ""}`}
+                        onMouseEnter={() => setActive(idx)}
+                        onClick={() => openClass(c)}
+                      >
+                        <span
+                          className="search-item-swatch"
+                          style={{ background: c.color ?? "var(--color-primary)" }}
+                          aria-hidden
+                        />
+                        <span className="search-item-title">{c.name}</span>
+                        <span className="search-item-sub">{c.code ?? ""}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+function snippet(content: string, query: string): string {
+  if (!content) return "";
+  const t = query.trim();
+  if (!t) return content.slice(0, 80);
+  const i = content.toLowerCase().indexOf(t.toLowerCase());
+  if (i < 0) return content.slice(0, 80);
+  const start = Math.max(0, i - 24);
+  const out = content.slice(start, start + 80).replace(/\s+/g, " ").trim();
+  return (start > 0 ? "…" : "") + out + (start + 80 < content.length ? "…" : "");
+}
 
 /* ---- quick actions ----------------------------------------------- */
 
@@ -147,45 +362,174 @@ const QuickActionTile: FC<QAProps> = ({ title, sub, icon, bg, fg, onClick }) => 
   </button>
 );
 
-const QuickActions: FC = () => {
+const QuickActions: FC<{ onCreated: () => void }> = ({ onCreated }) => {
   const setView = useApp((s) => s.setView);
+  const setSelectedNote = useApp((s) => s.setSelectedNote);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [recorderOpen, setRecorderOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function newNote(): Promise<void> {
+    const note = await upsertNote({ title: "Untitled", content_markdown: "" });
+    await recordXp("createNote", XP_RULES.createNote);
+    setSelectedNote(note);
+    setView({ kind: "note", noteId: note.id });
+    onCreated();
+  }
+
+  async function onImagePicked(e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    try {
+      const dataUri = await fileToDataUri(file);
+      const title = stripExt(file.name) || "Image note";
+      const note = await upsertNote({
+        title,
+        content_markdown: `![${title}](${dataUri})\n`,
+      });
+      await upsertAttachment({
+        note_id: note.id,
+        type: "image",
+        local_uri: dataUri,
+        file_name: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+      });
+      await recordXp("createNote", XP_RULES.createNote);
+      setSelectedNote(note);
+      setView({ kind: "note", noteId: note.id });
+      onCreated();
+    } catch (err) {
+      setError((err as Error).message || "Failed to upload image.");
+    }
+  }
+
+  async function handleAudio(blob: Blob): Promise<void> {
+    try {
+      const dataUri = await blobToDataUri(blob);
+      const title = `Voice note · ${new Date().toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}`;
+      const note = await upsertNote({
+        title,
+        content_markdown:
+          "Recorded audio attached. Open the note to play it back or transcribe later.",
+      });
+      await upsertAttachment({
+        note_id: note.id,
+        type: "audio",
+        local_uri: dataUri,
+        file_name: "recording.webm",
+        mime_type: blob.type || "audio/webm",
+        size_bytes: blob.size,
+      });
+      await recordXp("createNote", XP_RULES.createNote);
+      setSelectedNote(note);
+      setView({ kind: "note", noteId: note.id });
+      onCreated();
+    } catch (err) {
+      setError((err as Error).message || "Failed to save recording.");
+    }
+  }
+
   return (
-    <section className="quick-actions">
-      <QuickActionTile
-        title="New Note" sub="Start writing"
-        icon={<PencilIcon size={20} />}
-        bg="var(--color-accentRoseSoft)" fg="var(--color-accentRose)"
-        onClick={() => setView({ kind: "notes" })}
+    <>
+      <section className="quick-actions">
+        <QuickActionTile
+          title="New Note" sub="Start writing"
+          icon={<PencilIcon size={20} />}
+          bg="var(--color-accentRoseSoft)" fg="var(--color-accentRose)"
+          onClick={() => void newNote()}
+        />
+        <QuickActionTile
+          title="Record Audio" sub="Capture ideas"
+          icon={<MicIcon size={20} />}
+          bg="var(--color-accentAmberSoft)" fg="var(--color-accentAmber)"
+          onClick={() => {
+            setError(null);
+            setRecorderOpen(true);
+          }}
+        />
+        <QuickActionTile
+          title="Upload Image" sub="Add from device"
+          icon={<ImageIcon size={20} />}
+          bg="var(--color-accentSkySoft)" fg="var(--color-accentSky)"
+          onClick={() => fileRef.current?.click()}
+        />
+        <QuickActionTile
+          title="Generate Flashcards" sub="From your notes"
+          icon={<SparklesIcon size={20} />}
+          bg="var(--color-accentPeachSoft)" fg="var(--color-accentPeach)"
+          onClick={() => setView({ kind: "flashcards" })}
+        />
+      </section>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => void onImagePicked(e)}
       />
-      <QuickActionTile
-        title="Record Audio" sub="Capture ideas"
-        icon={<MicIcon size={20} />}
-        bg="var(--color-accentAmberSoft)" fg="var(--color-accentAmber)"
-      />
-      <QuickActionTile
-        title="Upload Image" sub="Add from device"
-        icon={<ImageIcon size={20} />}
-        bg="var(--color-accentSkySoft)" fg="var(--color-accentSky)"
-      />
-      <QuickActionTile
-        title="Generate Flashcards" sub="From your notes"
-        icon={<SparklesIcon size={20} />}
-        bg="var(--color-accentPeachSoft)" fg="var(--color-accentPeach)"
-        onClick={() => setView({ kind: "flashcards" })}
-      />
-    </section>
+      {recorderOpen && (
+        <AudioRecorderModal
+          onClose={() => setRecorderOpen(false)}
+          onSave={async (b) => {
+            setRecorderOpen(false);
+            await handleAudio(b);
+          }}
+        />
+      )}
+      {error && (
+        <div className="pill error" style={{ alignSelf: "flex-start" }}>{error}</div>
+      )}
+    </>
   );
 };
+
+function stripExt(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i > 0 ? name.slice(0, i) : name;
+}
+
+function fileToDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(r.error ?? new Error("read failed"));
+    r.onload = () => resolve(String(r.result));
+    r.readAsDataURL(file);
+  });
+}
+
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(r.error ?? new Error("read failed"));
+    r.onload = () => resolve(String(r.result));
+    r.readAsDataURL(blob);
+  });
+}
 
 /* ---- streak card ------------------------------------------------- */
 
 const StreakCard: FC<{ streak: number }> = ({ streak }) => {
+  const setView = useApp((s) => s.setView);
   // 7-day window: today plus the previous six. `streak` collapses
   // them all from the right (today) — purely visual feedback so the
   // number on the ring matches the dot count.
   const filled = Math.min(streak, 7);
   return (
-    <Card title="Today's Study Streak" icon={<FlameIcon size={18} />} action="more">
+    <Card
+      title="Today's Study Streak"
+      icon={<FlameIcon size={18} />}
+      action={[
+        { label: "View calendar", onClick: () => setView({ kind: "calendar" }) },
+        { label: "Open settings", onClick: () => setView({ kind: "settings" }) },
+      ]}
+    >
       <div className="streak">
         <ProgressRing
           value={filled / 7}
@@ -219,22 +563,39 @@ const StreakCard: FC<{ streak: number }> = ({ streak }) => {
 
 const ContinueLastNoteCard: FC = () => {
   const notes = useApp((s) => s.notes);
+  const classes = useApp((s) => s.classes);
   const setSelectedNote = useApp((s) => s.setSelectedNote);
   const setView = useApp((s) => s.setView);
   const last = notes[0];
 
+  const className = useMemo(() => {
+    if (!last?.class_id) return null;
+    return classes.find((c) => c.id === last.class_id)?.name ?? null;
+  }, [last, classes]);
+
   return (
-    <Card title="Continue Last Note" icon={<NoteIcon size={18} />} action="more">
+    <Card
+      title="Continue Last Note"
+      icon={<NoteIcon size={18} />}
+      action={[
+        {
+          label: "Open note",
+          onClick: () => {
+            if (!last) return;
+            setSelectedNote(last);
+            setView({ kind: "note", noteId: last.id });
+          },
+        },
+        { label: "View all notes", onClick: () => setView({ kind: "notes" }) },
+      ]}
+    >
       {last ? (
         <div className="continue-note">
           <div className="note-pill">
             <span className="note-glyph"><NoteIcon size={20} /></span>
             <div className="meta">
               <span className="title">{last.title || "Untitled"}</span>
-              <span className="sub">
-                {/* TODO: hook to real class name once class join is wired in */}
-                Recent note
-              </span>
+              <span className="sub">{className ?? "Unfiled"}</span>
               <span className="when">
                 Edited {fmtRelative(new Date(last.updated_at))}
               </span>
@@ -273,31 +634,85 @@ function fmtRelative(d: Date): string {
 
 /* ---- today's plan card ------------------------------------------- */
 
-interface PlanItem { id: string; title: string; time: string; done: boolean; }
-
-const DEMO_PLAN: PlanItem[] = [
-  { id: "1", title: "Review Cell Biology",   time: "9:00 AM",  done: true },
-  { id: "2", title: "Flashcards: Mitosis",    time: "11:00 AM", done: true },
-  { id: "3", title: "Chemistry Problem Set",  time: "1:30 PM",  done: false },
-  { id: "4", title: "Read: The Great Gatsby", time: "4:00 PM",  done: false },
-  { id: "5", title: "Quiz: World History",    time: "7:00 PM",  done: false },
-];
-
-const TodaysPlanCard: FC = () => {
+const TodaysPlanCard: FC<{ tasks: StudyTaskRow[]; onChange: () => void }> = ({
+  tasks,
+  onChange,
+}) => {
   const setView = useApp((s) => s.setView);
+
+  // The home query loads a 7-day window so the calendar/right-panel
+  // share state. Filter to *today* for this card so the list stays focused.
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const tomorrow = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, [today]);
+
+  const todayTasks = useMemo(
+    () =>
+      tasks
+        .filter((t) => {
+          const ts = new Date(t.scheduled_for).getTime();
+          return ts >= today.getTime() && ts < tomorrow.getTime();
+        })
+        .sort((a, b) => a.scheduled_for.localeCompare(b.scheduled_for)),
+    [tasks, today, tomorrow],
+  );
+
+  async function toggle(t: StudyTaskRow): Promise<void> {
+    const wasComplete = !!t.completed_at;
+    await upsertStudyTask({
+      ...t,
+      completed_at: wasComplete ? null : new Date().toISOString(),
+    });
+    if (!wasComplete) {
+      await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+    }
+    onChange();
+  }
+
   return (
-    <Card title="Today's Plan" icon={<ClockIcon size={18} />} action="more">
-      <div className="plan-list">
-        {DEMO_PLAN.map((p) => (
-          <div key={p.id} className={`plan-row ${p.done ? "done" : ""}`}>
-            <span className={`plan-check ${p.done ? "done" : ""}`}>
-              {p.done && <CheckIcon size={12} />}
-            </span>
-            <span className="plan-title">{p.title}</span>
-            <span className="plan-time">{p.time}</span>
-          </div>
-        ))}
-      </div>
+    <Card
+      title="Today's Plan"
+      icon={<ClockIcon size={18} />}
+      action={[
+        { label: "Open calendar", onClick: () => setView({ kind: "calendar" }) },
+        {
+          label: "Plan with AI",
+          onClick: () => setView({ kind: "calendar" }),
+        },
+      ]}
+    >
+      {todayTasks.length === 0 ? (
+        <div style={{ color: "var(--color-textMuted)", fontSize: 13, padding: "8px 0" }}>
+          Nothing scheduled for today. Generate a plan from the calendar.
+        </div>
+      ) : (
+        <div className="plan-list">
+          {todayTasks.map((t) => {
+            const done = !!t.completed_at;
+            return (
+              <div key={t.id} className={`plan-row ${done ? "done" : ""}`}>
+                <button
+                  type="button"
+                  className={`plan-check ${done ? "done" : ""}`}
+                  aria-label={done ? "Mark task incomplete" : "Mark task complete"}
+                  onClick={() => void toggle(t)}
+                >
+                  {done && <CheckIcon size={12} />}
+                </button>
+                <span className="plan-title">{t.title}</span>
+                <span className="plan-time">{fmtTimeOfDay(t.scheduled_for)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <button type="button" className="plan-link" onClick={() => setView({ kind: "calendar" })}>
         View full schedule →
       </button>
@@ -305,38 +720,58 @@ const TodaysPlanCard: FC = () => {
   );
 };
 
+function fmtTimeOfDay(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 /* ---- recent notes card ------------------------------------------- */
 
 const RecentNotesCard: FC = () => {
   const notes = useApp((s) => s.notes);
+  const classes = useApp((s) => s.classes);
   const setSelectedNote = useApp((s) => s.setSelectedNote);
   const setView = useApp((s) => s.setView);
 
   const recent = notes.slice(0, 5);
+  const classMap = useMemo(() => {
+    const m = new Map<string, ClassRow>();
+    for (const c of classes) m.set(c.id, c);
+    return m;
+  }, [classes]);
 
   return (
-    <Card title="Recent Notes" icon={<NoteIcon size={18} />} action="more">
+    <Card
+      title="Recent Notes"
+      icon={<NoteIcon size={18} />}
+      action={[
+        { label: "View all notes", onClick: () => setView({ kind: "notes" }) },
+        { label: "View classes", onClick: () => setView({ kind: "classes" }) },
+      ]}
+    >
       <div className="recent-notes">
         {recent.length === 0 && (
           <div style={{ color: "var(--color-textMuted)", fontSize: 13, padding: "8px 0" }}>
             No notes yet — your recents will appear here.
           </div>
         )}
-        {recent.map((n) => (
-          <div
-            key={n.id}
-            className="recent-row"
-            onClick={() => {
-              setSelectedNote(n);
-              setView({ kind: "note", noteId: n.id });
-            }}
-          >
-            <NoteIcon size={14} />
-            <span className="recent-title">{n.title || "Untitled"}</span>
-            <span className="recent-class">—</span>
-            <span className="recent-when">{fmtShortDate(new Date(n.updated_at))}</span>
-          </div>
-        ))}
+        {recent.map((n) => {
+          const cls = n.class_id ? classMap.get(n.class_id) : null;
+          return (
+            <div
+              key={n.id}
+              className="recent-row"
+              onClick={() => {
+                setSelectedNote(n);
+                setView({ kind: "note", noteId: n.id });
+              }}
+            >
+              <NoteIcon size={14} />
+              <span className="recent-title">{n.title || "Untitled"}</span>
+              <span className="recent-class">{cls?.name ?? "—"}</span>
+              <span className="recent-when">{fmtShortDate(new Date(n.updated_at))}</span>
+            </div>
+          );
+        })}
       </div>
       <button type="button" className="plan-link" onClick={() => setView({ kind: "notes" })}>
         View all notes →
@@ -359,54 +794,71 @@ function fmtShortDate(d: Date): string {
 
 const FlashcardsDueCard: FC<{ dueCount: number }> = ({ dueCount }) => {
   const setView = useApp((s) => s.setView);
-  const newCount = Math.max(0, Math.min(dueCount, 12));
-  const learning = Math.max(0, Math.min(dueCount - newCount, 24));
-  const review = Math.max(0, dueCount - newCount - learning);
-  const total = dueCount > 0 ? dueCount : 48;
+  const dueCards = useApp((s) => s.dueCards);
 
-  // Demo splits when we have no real data so the card looks alive.
-  const segments = useMemo(
-    () =>
-      dueCount > 0
-        ? [
-            { value: newCount,   color: "var(--color-accentSky)"  },
-            { value: learning,   color: "var(--color-primary)"    },
-            { value: review,     color: "var(--color-accentSage)" },
-          ]
-        : [
-            { value: 12, color: "var(--color-accentSky)"  },
-            { value: 24, color: "var(--color-primary)"    },
-            { value: 12, color: "var(--color-accentSage)" },
-          ],
-    [dueCount, newCount, learning, review],
-  );
+  // Categorize the real due cards by spaced-repetition state so the
+  // legend reflects what we'd actually show in review.
+  const { newCount, learning, review } = useMemo(() => {
+    let n = 0;
+    let l = 0;
+    let r = 0;
+    for (const c of dueCards) {
+      if (c.review_count === 0 || c.difficulty === "new") n += 1;
+      else if (c.interval_days < 7) l += 1;
+      else r += 1;
+    }
+    return { newCount: n, learning: l, review: r };
+  }, [dueCards]);
+
+  const segments = useMemo(() => {
+    if (dueCount === 0) {
+      // Empty state ring stays muted instead of inventing fake data.
+      return [{ value: 1, color: "var(--color-surfaceMuted)" }];
+    }
+    return [
+      { value: newCount, color: "var(--color-accentSky)" },
+      { value: learning, color: "var(--color-primary)" },
+      { value: review, color: "var(--color-accentSage)" },
+    ];
+  }, [dueCount, newCount, learning, review]);
 
   return (
-    <Card title="Flashcards Due" icon={<FlashcardIcon size={18} />} action="more">
+    <Card
+      title="Flashcards Due"
+      icon={<FlashcardIcon size={18} />}
+      action={[
+        { label: "Open flashcards", onClick: () => setView({ kind: "flashcards" }) },
+      ]}
+    >
       <div className="donut-card">
         <Donut segments={segments} size={104} thickness={12}>
-          <span className="donut-num">{total}</span>
+          <span className="donut-num">{dueCount}</span>
           <span className="donut-unit">cards due</span>
         </Donut>
         <div className="legend">
           <div className="legend-row">
             <span className="swatch" style={{ background: "var(--color-accentSky)" }} />
             <span className="lbl">New</span>
-            <span className="val">{dueCount > 0 ? newCount : 12}</span>
+            <span className="val">{newCount}</span>
           </div>
           <div className="legend-row">
             <span className="swatch" style={{ background: "var(--color-primary)" }} />
             <span className="lbl">Learning</span>
-            <span className="val">{dueCount > 0 ? learning : 24}</span>
+            <span className="val">{learning}</span>
           </div>
           <div className="legend-row">
             <span className="swatch" style={{ background: "var(--color-accentSage)" }} />
             <span className="lbl">Review</span>
-            <span className="val">{dueCount > 0 ? review : 12}</span>
+            <span className="val">{review}</span>
           </div>
         </div>
       </div>
-      <button type="button" className="review-button" onClick={() => setView({ kind: "flashcards" })}>
+      <button
+        type="button"
+        className="review-button"
+        disabled={dueCount === 0}
+        onClick={() => setView({ kind: "flashcards" })}
+      >
         Review Flashcards
       </button>
     </Card>
@@ -415,24 +867,29 @@ const FlashcardsDueCard: FC<{ dueCount: number }> = ({ dueCount }) => {
 
 /* ---- quiz progress card ------------------------------------------ */
 
-const QuizProgressCard: FC = () => {
+const QuizProgressCard: FC<{ stats: { taken: number; avgPct: number; best: number } }> = ({
+  stats,
+}) => {
   const setView = useApp((s) => s.setView);
-  // TODO: pull live aggregates from quiz_attempts table
-  const avgPct = 68;
-  const taken = 17;
-  const best = 92;
+  const { taken, avgPct, best } = stats;
   return (
-    <Card title="Quiz Progress" icon={<QuizIcon size={18} />} action="more">
+    <Card
+      title="Quiz Progress"
+      icon={<QuizIcon size={18} />}
+      action={[
+        { label: "View all quizzes", onClick: () => setView({ kind: "quizzes" }) },
+      ]}
+    >
       <div className="donut-card">
         <Donut
           segments={[
-            { value: avgPct,        color: "var(--color-accentSky)" },
-            { value: 100 - avgPct,  color: "var(--color-surfaceMuted)" },
+            { value: avgPct || 0,        color: "var(--color-accentSky)" },
+            { value: 100 - (avgPct || 0),  color: "var(--color-surfaceMuted)" },
           ]}
           size={104}
           thickness={12}
         >
-          <span className="donut-num">{avgPct}%</span>
+          <span className="donut-num">{taken === 0 ? "—" : `${avgPct}%`}</span>
           <span className="donut-unit">average score</span>
         </Donut>
         <div className="legend">
@@ -442,11 +899,11 @@ const QuizProgressCard: FC = () => {
           </div>
           <div className="legend-row">
             <span className="lbl">Average Score</span>
-            <span className="val">{avgPct}%</span>
+            <span className="val">{taken === 0 ? "—" : `${avgPct}%`}</span>
           </div>
           <div className="legend-row">
             <span className="lbl">Best Score</span>
-            <span className="val">{best}%</span>
+            <span className="val">{taken === 0 ? "—" : `${best}%`}</span>
           </div>
         </div>
       </div>

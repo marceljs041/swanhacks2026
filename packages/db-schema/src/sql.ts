@@ -25,6 +25,7 @@ create table if not exists notes (
   content_markdown text not null default '',
   summary text,
   tags_json text not null default '[]',
+  icon text not null default 'note',
   created_at text not null,
   updated_at text not null,
   deleted_at text,
