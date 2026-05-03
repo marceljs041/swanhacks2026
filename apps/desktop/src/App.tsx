@@ -25,9 +25,11 @@ import {
 import { getCloudSyncMeta } from "./db/repositories.js";
 import { getDb } from "./db/client.js";
 import { registerDeviceWithCloud } from "./sync/registerDevice.js";
+import { refreshUserBadges } from "./lib/badgesSync.js";
 
 /** Background sync: every 5 minutes when online; idle skips if recently synced. */
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+let workerStarted = false;
 
 function customMacTitlebar(): boolean {
   return (
@@ -47,7 +49,11 @@ export function App() {
   const calendarDetailPanelOpen = useApp((s) => s.calendarDetailPanelOpen);
 
   useEffect(() => {
-    void getDb(); // ensure migrations run on first paint
+    if (workerStarted) return;
+    workerStarted = true;
+    void getDb().then(() => {
+      void refreshUserBadges();
+    }); // ensure migrations run on first paint
     const worker = new SyncWorker({
       db: desktopSyncDb,
       transport: desktopTransport,

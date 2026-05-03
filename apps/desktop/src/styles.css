@@ -446,6 +446,58 @@ a { color: inherit; text-decoration: none; }
   color: var(--color-textMuted);
   font-size: 14px;
 }
+.hero-badges {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.hero-badges-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-textMuted);
+}
+.hero-badges-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hero-badges-link:hover {
+  opacity: 0.85;
+}
+.hero-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.hero-badge-emoji {
+  font-size: 22px;
+  line-height: 1;
+  cursor: default;
+}
+.hero-badge-more {
+  font-size: 12px;
+  color: var(--color-textMuted);
+  font-weight: 600;
+}
+.hero-badges-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-textMuted);
+  max-width: 420px;
+  line-height: 1.4;
+}
 .hero .hero-illustration {
   /* No background or padding — the illustration sits directly on the app canvas. */
   width: 320px;
@@ -2370,6 +2422,54 @@ button.event-rail-time-trigger:hover {
   color: var(--color-onPrimary);
 }
 .theme-swatch.active { border-color: var(--color-primary); }
+
+.badges-settings-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.badges-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.badge-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  min-height: 0;
+}
+.badge-tile-locked {
+  opacity: 0.55;
+}
+.badge-tile-unlocked {
+  border-color: var(--color-primary);
+  background: var(--color-primarySoft);
+}
+.badge-tile-emoji {
+  font-size: 26px;
+  line-height: 1;
+}
+.badge-tile-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.badge-tile-desc {
+  font-size: 11px;
+  color: var(--color-textMuted);
+  line-height: 1.35;
+}
 
 /* ---------- empty state ---------- */
 .empty {

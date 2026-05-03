@@ -21,9 +21,11 @@ export interface Profile {
   name: string;
   role: LearnerRole | null;
   onboardedAt: string | null;
+  /** Unlocked badge ids (see `@studynest/shared` / `badges`). */
+  badges: string[];
 }
 
-const EMPTY: Profile = { name: "", role: null, onboardedAt: null };
+const EMPTY: Profile = { name: "", role: null, onboardedAt: null, badges: [] };
 
 export function getProfile(): Profile {
   if (typeof window === "undefined") return EMPTY;
@@ -31,11 +33,16 @@ export function getProfile(): Profile {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as Partial<Profile>;
+    const rawBadges = parsed.badges;
+    const badges = Array.isArray(rawBadges)
+      ? rawBadges.filter((b): b is string => typeof b === "string")
+      : [];
     return {
       name: typeof parsed.name === "string" ? parsed.name : "",
       role: (parsed.role as LearnerRole) ?? null,
       onboardedAt:
         typeof parsed.onboardedAt === "string" ? parsed.onboardedAt : null,
+      badges,
     };
   } catch {
     return EMPTY;

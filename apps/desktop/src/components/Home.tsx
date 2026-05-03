@@ -20,8 +20,13 @@ import { AudioRecorderModal } from "./AudioRecorderModal.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { BRAND_HERO_URL } from "../lib/brand.js";
 import { firstName } from "../lib/profile.js";
+import { refreshUserBadges } from "../lib/badgesSync.js";
 import { getGreeting } from "../lib/greeting.js";
-import { XP_RULES } from "@studynest/shared";
+import {
+  BADGE_DEFINITIONS,
+  XP_RULES,
+  isBadgeId,
+} from "@studynest/shared";
 import type { ClassRow, StudyTaskRow } from "@studynest/shared";
 import {
   ArrowRightIcon,
@@ -81,6 +86,7 @@ export const Home: FC = () => {
     setClasses(cls);
     setWeekTasks(tasks);
     setStats(qs);
+    await refreshUserBadges();
   }, [setXp, setDueCards, setNotes, setClasses, setWeekTasks]);
 
   useEffect(() => {
@@ -113,7 +119,14 @@ export const Home: FC = () => {
 
 const Hero: FC = () => {
   const profileName = useApp((s) => s.profile.name);
+  const profileBadges = useApp((s) => s.profile.badges);
+  const setView = useApp((s) => s.setView);
   const name = useMemo(() => firstName(profileName), [profileName]);
+  const unlockedDefs = useMemo(() => {
+    const ids = new Set(profileBadges.filter(isBadgeId));
+    return BADGE_DEFINITIONS.filter((d) => ids.has(d.id));
+  }, [profileBadges]);
+  const badgeTotal = BADGE_DEFINITIONS.length;
 
   // Recompute the greeting on a low-frequency cadence so a long-open
   // window crosses bucket boundaries (e.g. afternoon → evening) without
@@ -138,6 +151,39 @@ const Hero: FC = () => {
             </span>
           </h1>
           <p>{greeting.subline}</p>
+          <div className="hero-badges" aria-label="Badges">
+            <span className="hero-badges-meta">
+              {unlockedDefs.length}/{badgeTotal} badges
+              <button
+                type="button"
+                className="hero-badges-link"
+                onClick={() => setView({ kind: "settings" })}
+              >
+                View all
+              </button>
+            </span>
+            {unlockedDefs.length > 0 ? (
+              <div className="hero-badges-row" role="list">
+                {unlockedDefs.slice(0, 8).map((b) => (
+                  <span
+                    key={b.id}
+                    role="listitem"
+                    className="hero-badge-emoji"
+                    title={`${b.title} — ${b.description}`}
+                  >
+                    {b.emoji}
+                  </span>
+                ))}
+                {unlockedDefs.length > 8 && (
+                  <span className="hero-badge-more">+{unlockedDefs.length - 8}</span>
+                )}
+              </div>
+            ) : (
+              <p className="hero-badges-hint">
+                Take notes, review flashcards, and finish quizzes to unlock badges.
+              </p>
+            )}
+          </div>
         </div>
       </div>
       <div className="hero-illustration" aria-hidden>
