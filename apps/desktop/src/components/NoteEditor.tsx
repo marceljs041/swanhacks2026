@@ -150,6 +150,13 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
+  /** Latest note/title/body for debounced saves (avoids stale closures overwriting title). */
+  const noteRef = useRef<NoteRow | null>(null);
+  const titleRef = useRef("");
+  const bodyRef = useRef("");
+  noteRef.current = note;
+  titleRef.current = title;
+  bodyRef.current = body;
 
   /* --- data loading ---------------------------------------------------- */
 
@@ -219,11 +226,15 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       const next = await upsertNote({
-        ...(note ?? {}),
+        ...(noteRef.current ?? {}),
         id: noteId,
-        title: patch.title ?? (title || "Untitled"),
-        content_markdown: patch.content_markdown ?? body,
         ...patch,
+        title:
+          patch.title !== undefined
+            ? String(patch.title).trim() || "Untitled"
+            : titleRef.current.trim() || "Untitled",
+        content_markdown:
+          patch.content_markdown !== undefined ? patch.content_markdown : bodyRef.current,
       });
       setNote(next);
       setSyncStatus("synced");
@@ -240,6 +251,12 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
 
   function onBodyChange(md: string): void {
     setBody(md);
+    const fromDoc = parseLeadingH1Text(md);
+    if (fromDoc !== undefined) {
+      setTitle((prev) => (prev === fromDoc ? prev : fromDoc));
+      persistNote({ content_markdown: md, title: fromDoc });
+      return;
+    }
     persistNote({ content_markdown: md });
   }
 
@@ -3694,6 +3711,19 @@ function ensureLeadingTitleH1(markdown: string, noteTitle: string): string {
     return lines.join("\n");
   }
   return `${line}\n\n${text}`;
+}
+
+/**
+ * If the body starts with an ATX H1 (`# ` …), return the heading text for the title field.
+ * Matches {@link ensureLeadingTitleH1} / outline extraction so editing the doc title updates `title`.
+ */
+function parseLeadingH1Text(markdown: string): string | undefined {
+  const text = markdown.trimEnd();
+  if (!text) return undefined;
+  const top = text.split("\n")[0]!.trim();
+  if (!/^#\s[^#]/.test(top)) return undefined;
+  const raw = top.replace(/^#\s+/, "").trim().replace(/\n/g, " ");
+  return raw ? raw : "Untitled";
 }
 
 function extractNoteIdsFromNoteLinks(md: string): string[] {
