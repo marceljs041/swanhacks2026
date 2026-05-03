@@ -8,7 +8,7 @@ import type {
   QuizRow,
   StudyTaskRow,
 } from "@studynest/shared";
-import { XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
 import { BRAND_CLASS_HERO_URL } from "../lib/brand.js";
 import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
@@ -34,6 +34,7 @@ import {
   nextTaskByClass,
   quizStatsForClass,
   quizzesForClass,
+  recordRewardPoints,
   recordXp,
   tasksForClass,
   upsertFlashcard,
@@ -479,6 +480,7 @@ export const ClassView: FC<ClassViewProps> = ({ classId }) => {
               });
               if (!t.completed_at) {
                 await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+                await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
               }
               await reload();
             }}
@@ -526,6 +528,7 @@ export const ClassView: FC<ClassViewProps> = ({ classId }) => {
               });
               if (!t.completed_at) {
                 await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+                await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
               }
               await reload();
             }}
@@ -1538,4 +1541,3 @@ const BookIconAlt: FC = () => (
     <path d="M8 7h7M8 11h7M8 15h5" />
   </svg>
 );
-

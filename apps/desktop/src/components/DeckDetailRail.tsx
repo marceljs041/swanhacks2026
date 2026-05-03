@@ -15,6 +15,7 @@ import {
   getNote,
   listFlashcards,
   listFlashcardSets,
+  recordRewardPoints,
   recordXp,
   upsertQuiz,
   upsertQuizQuestion,
@@ -24,7 +25,7 @@ import { upsertEvent as upsertCalendarEvent } from "../db/calendar.js";
 import { iconFor, toneFor } from "../lib/classDisplay.js";
 import { useApp, type ReviewMode } from "../store.js";
 import type { FlashcardRow, FlashcardSetRow, NoteRow } from "@studynest/shared";
-import { ulid, XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, ulid, XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
 import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
 import { withViewTransition } from "../lib/viewTransition.js";
@@ -237,6 +238,7 @@ export const DeckDetailRail: FC<Props> = ({
         source_type: "manual",
       });
       await recordXp("studyTaskComplete", 1);
+      await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
       setToast("Added a review block to your study plan.");
     } catch {
       setToast("Couldn't add to your study plan.");

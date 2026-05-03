@@ -2,12 +2,13 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, } from "react";
 import { ai } from "../lib/ai.js";
 import { BRAND_AI_URL } from "../lib/brand.js";
+import { describeAgo } from "../lib/relativeTime.js";
 import { NOTE_ICON_LIST, NoteGlyph, getNoteIconComponent, } from "../lib/noteIcons.js";
 import { getNote, listClasses, listFlashcardSets, listFlashcards, listNotes, listQuizzes, recordXp, softDeleteNote, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertQuiz, upsertQuizQuestion, upsertStudyTask, searchNotes, } from "../db/repositories.js";
 import { MoreMenu } from "./ui/MoreMenu.js";
 import { useApp } from "../store.js";
 import { ulid, XP_RULES } from "@studynest/shared";
-import { ArrowRightIcon, ChevLeftIcon, CloudCheckIcon, CloudOffIcon, ImageIcon, MicIcon, MoreIcon, NoteIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, XIcon, } from "./icons.js";
+import { ArrowRightIcon, CalendarIcon, ChevLeftIcon, CloudCheckIcon, CloudOffIcon, ImageIcon, MicIcon, MoreIcon, NoteIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, XIcon, } from "./icons.js";
 import { AudioRecorderModal } from "./AudioRecorderModal.js";
 export const NoteEditor = ({ noteId }) => {
     const [note, setNote] = useState(null);
@@ -35,6 +36,13 @@ export const NoteEditor = ({ noteId }) => {
     const saveTimer = useRef(null);
     const fileInputRef = useRef(null);
     const editorRef = useRef(null);
+    /** Latest note/title/body for debounced saves (avoids stale closures overwriting title). */
+    const noteRef = useRef(null);
+    const titleRef = useRef("");
+    const bodyRef = useRef("");
+    noteRef.current = note;
+    titleRef.current = title;
+    bodyRef.current = body;
     /* --- data loading ---------------------------------------------------- */
     useEffect(() => {
         void getNote(noteId).then((n) => {
@@ -94,11 +102,13 @@ export const NoteEditor = ({ noteId }) => {
             clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(async () => {
             const next = await upsertNote({
-                ...(note ?? {}),
+                ...(noteRef.current ?? {}),
                 id: noteId,
-                title: patch.title ?? (title || "Untitled"),
-                content_markdown: patch.content_markdown ?? body,
                 ...patch,
+                title: patch.title !== undefined
+                    ? String(patch.title).trim() || "Untitled"
+                    : titleRef.current.trim() || "Untitled",
+                content_markdown: patch.content_markdown !== undefined ? patch.content_markdown : bodyRef.current,
             });
             setNote(next);
             setSyncStatus("synced");
@@ -113,6 +123,12 @@ export const NoteEditor = ({ noteId }) => {
     }
     function onBodyChange(md) {
         setBody(md);
+        const fromDoc = parseLeadingH1Text(md);
+        if (fromDoc !== undefined) {
+            setTitle((prev) => (prev === fromDoc ? prev : fromDoc));
+            persistNote({ content_markdown: md, title: fromDoc });
+            return;
+        }
         persistNote({ content_markdown: md });
     }
     function addTag(t) {
@@ -209,8 +225,14 @@ export const NoteEditor = ({ noteId }) => {
                 const res = await ai.quiz({ ...ctx, count: 5 });
                 const quiz = await upsertQuiz({
                     note_id: noteId,
+                    class_id: note.class_id,
                     title: `${title || "Untitled"} — quiz`,
+                    description: `${res.questions.length} practice questions generated from this note.`,
+                    source_type: "note",
+                    source_ids_json: JSON.stringify([noteId]),
+                    tags_json: JSON.stringify(["Lecture", "Practice"]),
                 });
+                let position = 0;
                 for (const q of res.questions) {
                     await upsertQuizQuestion({
                         quiz_id: quiz.id,
@@ -221,8 +243,11 @@ export const NoteEditor = ({ noteId }) => {
                             : null,
                         correct_answer: String(q.answer ?? ""),
                         explanation: q.explanation ?? null,
+                        source_note_id: noteId,
+                        position: position++,
                     });
                 }
+                await recordXp("generateFlashcards", XP_RULES.generateFlashcards);
                 setQuizzes(await listQuizzes(noteId));
             }
             else if (action === "studyPlan") {
@@ -319,6 +344,31 @@ export const NoteEditor = ({ noteId }) => {
         { label: "Duplicate", icon: _jsx(NoteIcon, { size: 14 }), onClick: () => void duplicateNote() },
         { label: "Copy as markdown", icon: _jsx(UploadIcon, { size: 14 }), onClick: () => void copyToClipboard() },
         { label: "Export .md", icon: _jsx(UploadIcon, { size: 14 }), onClick: exportMarkdown },
+        {
+            label: "Add to calendar",
+            icon: _jsx(CalendarIcon, { size: 14 }),
+            onClick: () => {
+                // Suggest a 30-min review block tomorrow at 9 AM tied to this note.
+                const start = new Date();
+                start.setDate(start.getDate() + 1);
+                start.setHours(9, 0, 0, 0);
+                const end = new Date(start.getTime() + 30 * 60_000);
+                setView({ kind: "calendar" });
+                queueMicrotask(() => {
+                    useApp.getState().setCalendarComposer({
+                        mode: "create",
+                        prefill: {
+                            type: "study_block",
+                            title: `Review ${note.title}`,
+                            note_id: note.id,
+                            class_id: note.class_id ?? null,
+                            start_at: start.toISOString(),
+                            end_at: end.toISOString(),
+                        },
+                    });
+                });
+            },
+        },
         { label: "Delete", icon: _jsx(TrashIcon, { size: 14 }), danger: true, onClick: () => void deleteNote() },
     ];
     const outlineMenu = [
@@ -2205,18 +2255,6 @@ const SyncFooter = ({ status, updatedAt, }) => {
                                 ? "Saving changes…"
                                 : "Not synced" }), _jsx("span", { className: "sync-sub", children: s.tone === "ok" ? `Last synced ${describeAgo(updatedAt)}` : s.detail })] }), _jsx("span", { className: "sync-dot" })] }));
 };
-function describeAgo(iso) {
-    const ms = Date.now() - new Date(iso).getTime();
-    if (ms < 60_000)
-        return "just now";
-    const m = Math.floor(ms / 60_000);
-    if (m < 60)
-        return `${m} min ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24)
-        return `${h}h ago`;
-    return new Date(iso).toLocaleDateString();
-}
 /* ====================================================================
  * Insights / linking helpers
  * ================================================================== */
@@ -2236,6 +2274,20 @@ function ensureLeadingTitleH1(markdown, noteTitle) {
         return lines.join("\n");
     }
     return `${line}\n\n${text}`;
+}
+/**
+ * If the body starts with an ATX H1 (`# ` …), return the heading text for the title field.
+ * Matches {@link ensureLeadingTitleH1} / outline extraction so editing the doc title updates `title`.
+ */
+function parseLeadingH1Text(markdown) {
+    const text = markdown.trimEnd();
+    if (!text)
+        return undefined;
+    const top = text.split("\n")[0].trim();
+    if (!/^#\s[^#]/.test(top))
+        return undefined;
+    const raw = top.replace(/^#\s+/, "").trim().replace(/\n/g, " ");
+    return raw ? raw : "Untitled";
 }
 function extractNoteIdsFromNoteLinks(md) {
     const ids = [];

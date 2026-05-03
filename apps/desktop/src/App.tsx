@@ -97,6 +97,7 @@ export function App() {
   // as Classes — so we suppress App-level RightPanel for calendar too.
   const showRightPanel =
     view.kind !== "note" &&
+    view.kind !== "points" &&
     view.kind !== "classes" &&
     view.kind !== "flashcards" &&
     view.kind !== "flashcardSet" &&

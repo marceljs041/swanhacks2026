@@ -1,6 +1,6 @@
 /**
  * Downloads Gemma 3 4B Instruct (Q4_K_M GGUF) into app-data/models/.
- * Run with: pnpm --filter @studynest/desktop fetch-model
+ * Run with: pnpm --filter @notegoat/desktop fetch-model
  *
  * Set STUDYNEST_GEMMA_MODEL_URL to override the source.
  */

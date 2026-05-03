@@ -1,7 +1,8 @@
 import { buildOutboxRow } from "@studynest/sync";
 import { CLOUD_API_BASE_URL, nowIso, } from "@studynest/shared";
 import { getDb, getDeviceId, getUserId } from "../db/client.js";
-import { listOutbox, markOutboxSynced, recordOutboxFailure, upsertClass, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertQuiz, upsertQuizQuestion, upsertStudyPlan, upsertStudyTask, } from "../db/repositories.js";
+import { listOutbox, markOutboxSynced, recordOutboxFailure, upsertClass, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertQuiz, upsertQuizQuestion, upsertStudyPlan, upsertStudyTask, saveQuizSession, upsertRewardPointsEvent, } from "../db/repositories.js";
+import { upsertEvent as upsertCalendarEvent, upsertChecklistItem, } from "../db/calendar.js";
 export const desktopSyncDb = {
     async getDeviceId() {
         return getDeviceId();
@@ -33,6 +34,10 @@ export const desktopSyncDb = {
         if (env.operation === "delete") {
             const db = await getDb();
             const ts = nowIso();
+            if (env.entity_type === "quiz_sessions") {
+                db.prepare("delete from quiz_sessions where quiz_id = ?").run(env.entity_id);
+                return "applied";
+            }
             db.prepare(`update ${env.entity_type} set deleted_at = ?, updated_at = ? where id = ?`).run(ts, ts, env.entity_id);
             return "applied";
         }
@@ -55,11 +60,38 @@ export const desktopSyncDb = {
             case "quiz_questions":
                 await upsertQuizQuestion(p, skipOutbox);
                 return "applied";
+            case "quiz_sessions": {
+                const raw = p.answers_json;
+                const answers = typeof raw === "string"
+                    ? JSON.parse(raw || "{}")
+                    : (raw ?? {});
+                await saveQuizSession({
+                    quiz_id: p.quiz_id ?? env.entity_id,
+                    current_index: Number(p.current_index ?? 0),
+                    answers,
+                    started_at: p.started_at,
+                }, skipOutbox);
+                return "applied";
+            }
             case "study_plans":
                 await upsertStudyPlan(p, skipOutbox);
                 return "applied";
             case "study_tasks":
                 await upsertStudyTask(p, skipOutbox);
+                return "applied";
+            case "calendar_events":
+                await upsertCalendarEvent(p, skipOutbox);
+                return "applied";
+            case "checklist_items":
+                await upsertChecklistItem(p, skipOutbox);
+                return "applied";
+            case "reward_points_events":
+                await upsertRewardPointsEvent({
+                    id: String(p.id),
+                    action: String(p.action ?? "unknown"),
+                    points: Number(p.points ?? 0),
+                    created_at: String(p.created_at ?? nowIso()),
+                }, skipOutbox);
                 return "applied";
             default:
                 return "skipped";
@@ -69,9 +101,12 @@ export const desktopSyncDb = {
 export const desktopTransport = {
     async ping() {
         try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 2000);
             const res = await fetch(`${CLOUD_API_BASE_URL}/health`, {
-                signal: AbortSignal.timeout(2000),
+                signal: ctrl.signal,
             });
+            clearTimeout(timer);
             return res.ok;
         }
         catch {

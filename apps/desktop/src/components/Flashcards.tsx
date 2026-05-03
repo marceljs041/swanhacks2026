@@ -13,6 +13,7 @@ import {
   listFlashcardSets,
   listFlashcardsByMode,
   markCardForReview,
+  recordRewardPoints,
   recordXp,
   relatedDecksForCard,
   upsertFlashcard,
@@ -25,7 +26,7 @@ import type {
   FlashcardSetRow,
   NoteRow,
 } from "@studynest/shared";
-import { XP_RULES, nowIso } from "@studynest/shared";
+import { POINTS_RULES, XP_RULES, nowIso } from "@studynest/shared";
 import { iconFor, toneFor } from "../lib/classDisplay.js";
 import {
   type FlashcardSessionGoals,
@@ -342,6 +343,7 @@ export const Flashcards: FC<Props> = ({ setId, mode = "due" }) => {
       nextSession.reviewed % 10 === 0
     ) {
       await recordXp("reviewTenCards", XP_RULES.reviewTenCards);
+      await recordRewardPoints("reviewTenFlashcards", POINTS_RULES.reviewTenFlashcards);
     }
 
     setCards((prev) => prev.map((c) => (c.id === card.id ? updated : c)));
@@ -814,4 +816,3 @@ const GoalRow: FC<GoalRowProps> = ({ label, current, target, small }) => {
     </li>
   );
 };
-

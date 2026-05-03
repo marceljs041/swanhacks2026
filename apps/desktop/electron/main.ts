@@ -10,13 +10,24 @@ const isDev = !app.isPackaged || !!process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow: BrowserWindow | null = null;
 
+function windowIconPath(): string | undefined {
+  const rel =
+    process.platform === "win32"
+      ? "../build/desktopicon.ico"
+      : "../build/desktopicon.icns";
+  const p = join(__dirname, rel);
+  return existsSync(p) ? p : undefined;
+}
+
 function createWindow(): void {
+  const icon = windowIconPath();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#FBF5EC",
+    ...(icon ? { icon } : {}),
     /** Inset traffic lights + seamless top; renderer paints a matching drag strip. */
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {

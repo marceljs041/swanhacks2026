@@ -1,11 +1,16 @@
 {
-  "name": "@studynest/desktop",
+  "name": "@notegoat/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Note Goat — offline-first study workspace (desktop).",
+  "author": "Note Goat",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/prepare-electron-bundle.mjs",
     "build": "tsc -b && vite build && electron-builder",
+    "build:win": "pnpm run prebuild && tsc -b && vite build && electron-builder --win",
+    "build:bundle": "pnpm run fetch-model && pnpm run build",
     "electron": "electron .",
     "typecheck": "tsc -b --noEmit",
     "seed": "tsx scripts/seed.ts",
@@ -22,6 +27,52 @@
     "react-dom": "^18.3.1",
     "sql.js": "^1.11.0",
     "zustand": "^4.5.4"
+  },
+  "build": {
+    "appId": "com.notegoat.desktop",
+    "productName": "Note Goat",
+    "artifactName": "${productName}-${version}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../api",
+        "to": "api",
+        "filter": [
+          "**/*",
+          "!**/.git/**",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/.pytest_cache/**",
+          "!**/.mypy_cache/**",
+          "!**/node_modules/**",
+          "!**/*.egg-info/**"
+        ]
+      },
+      {
+        "from": "../../app-data/models",
+        "to": "app-data/models",
+        "filter": ["**/*.gguf"]
+      }
+    ],
+    "mac": {
+      "icon": "build/desktopicon.icns",
+      "category": "public.app-category.education"
+    },
+    "win": {
+      "icon": "build/desktopicon.ico",
+      "target": ["nsis"]
+    },
+    "linux": {
+      "executableName": "note-goat",
+      "category": "Education"
+    }
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

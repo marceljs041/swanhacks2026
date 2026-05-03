@@ -10,18 +10,23 @@ export const CLOUD_API_BASE_URL =
   "http://127.0.0.1:8000";
 
 export const XP_RULES = {
-  createNote: 5,
-  generateFlashcards: 10,
+  createNote: 10,
+  generateFlashcards: 15,
+  reviewFlashcards: 20,
   reviewTenCards: 20,
   completeQuiz: 25,
+  dailyStreak: 10,
   perfectQuizBonus: 15,
-  studyTaskComplete: 15,
+  studyTaskComplete: 10,
 } as const;
 
 export type XpAction = keyof typeof XP_RULES;
 
 /** Redeemable-style points ledger (separate from XP). */
 export const POINTS_RULES = {
-  /** Per question answered correctly when a quiz attempt is finished. */
-  quizQuestionCorrect: 3,
+  completeQuiz: 10,
+  scoreEightyPlus: 15,
+  reviewTenFlashcards: 8,
+  finishStudyTask: 5,
+  threeDayStreak: 20,
 } as const;

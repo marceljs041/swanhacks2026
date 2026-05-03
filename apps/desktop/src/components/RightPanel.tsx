@@ -33,6 +33,7 @@ import {
   listFlashcardSets,
   listNotes,
   listTasksForRange,
+  recordRewardPoints,
   recordXp,
   totalRewardPoints,
   totalXp,
@@ -41,7 +42,7 @@ import {
   upsertStudyTask,
   xpByDay,
 } from "../db/repositories.js";
-import { ulid, XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, ulid, XP_RULES } from "@studynest/shared";
 import type { ClassRow, NoteRow, StudyTaskRow } from "@studynest/shared";
 import {
   ALL_WIDGETS,
@@ -746,7 +747,10 @@ function StudyTimerCard(): JSX.Element {
       completedRef.current = true;
       const wasFocus = timer.mode === "focus";
       setTimer(null);
-      if (wasFocus) void recordXp("studyTimerComplete", XP_RULES.studyTaskComplete);
+      if (wasFocus) {
+        void recordXp("studyTimerComplete", XP_RULES.studyTaskComplete);
+        void recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
+      }
     }
   }, [now, timer, setTimer]);
 
@@ -1095,7 +1099,10 @@ function TodaysPlanCard(): JSX.Element {
       ...t,
       completed_at: wasComplete ? null : new Date().toISOString(),
     });
-    if (!wasComplete) await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+    if (!wasComplete) {
+      await recordXp("studyTaskComplete", XP_RULES.studyTaskComplete);
+      await recordRewardPoints("finishStudyTask", POINTS_RULES.finishStudyTask);
+    }
     setReloadTick((n) => n + 1);
   }
 

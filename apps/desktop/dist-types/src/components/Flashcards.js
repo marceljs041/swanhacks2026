@@ -1,12 +1,15 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listFlashcardSets, listFlashcardsByMode, markCardForReview, recordXp, relatedDecksForCard, upsertFlashcard, upsertNote, } from "../db/repositories.js";
+import { getNote, listFlashcardSets, listFlashcardsByMode, markCardForReview, recordRewardPoints, recordXp, relatedDecksForCard, upsertFlashcard, upsertNote, } from "../db/repositories.js";
 import { useApp } from "../store.js";
-import { XP_RULES, nowIso } from "@studynest/shared";
+import { POINTS_RULES, XP_RULES, nowIso } from "@studynest/shared";
 import { iconFor, toneFor } from "../lib/classDisplay.js";
 import { formatSessionTime, loadGoals, loadSession, resetSession, saveSession, } from "../lib/flashcardSession.js";
+import { BRAND_FLASHCARD_HERO_URL } from "../lib/brand.js";
+import { withViewTransition } from "../lib/viewTransition.js";
 import { DeckDetailRail } from "./DeckDetailRail.js";
-import { ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, CheckIcon, ClockIcon, FlagIcon, FlameIcon, FlashcardIcon, HeadphonesIcon, PencilIcon, PlayIcon, RestartIcon, SearchIcon, SparklesIcon, StarIcon, TargetIcon, TrophyIcon, } from "./icons.js";
+import { HeroSearch } from "./HeroSearch.js";
+import { ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, CheckIcon, ClockIcon, FlagIcon, FlameIcon, FlashcardIcon, HeadphonesIcon, PencilIcon, PlayIcon, RestartIcon, SparklesIcon, StarIcon, TargetIcon, TrophyIcon, } from "./icons.js";
 const RATING_TO_DIFFICULTY = {
     again: "new",
     hard: "hard",
@@ -58,6 +61,8 @@ const RATING_XP = {
     good: 3,
     easy: 5,
 };
+/** Matches Home / Notes / Classes: `HeroSearch` + brand hero art in `.hero`. */
+const FlashcardsReviewHero = ({ children }) => (_jsxs("section", { className: "hero", children: [_jsxs("div", { className: "hero-main", children: [_jsx(HeroSearch, {}), children] }), _jsx("div", { className: "hero-illustration", "aria-hidden": true, children: _jsx("img", { className: "hero-illustration-img", src: BRAND_FLASHCARD_HERO_URL, alt: "", decoding: "async" }) })] }));
 export const Flashcards = ({ setId, mode = "due" }) => {
     const setView = useApp((s) => s.setView);
     const setSelectedDeck = useApp((s) => s.setSelectedDeck);
@@ -72,7 +77,6 @@ export const Flashcards = ({ setId, mode = "due" }) => {
     const [session, setSession] = useState(() => loadSession(setId));
     const [goals, setGoals] = useState(() => loadGoals(setId));
     const [related, setRelated] = useState([]);
-    const [search, setSearch] = useState("");
     const [readingAloud, setReadingAloud] = useState(false);
     const audioWantedRef = useRef(currentMode === "audio");
     useEffect(() => {
@@ -90,7 +94,6 @@ export const Flashcards = ({ setId, mode = "due" }) => {
             const next = sets.find((s) => s.id === setId) ?? null;
             setDeck(next);
             if (next?.note_id) {
-                const { getNote } = await import("../db/repositories.js");
                 const n = await getNote(next.note_id);
                 if (!cancelled)
                     setNote(n);
@@ -195,12 +198,12 @@ export const Flashcards = ({ setId, mode = "due" }) => {
             return;
         const titleSeed = card.front.replace(/\s+/g, " ").trim();
         const title = titleSeed.length > 60 ? titleSeed.slice(0, 60) + "…" : titleSeed;
-        const note = await upsertNote({
+        const created = await upsertNote({
             title: title || "Note from flashcard",
             content_markdown: `> ${card.front}\n\n${card.back}\n`,
             class_id: cls?.id ?? null,
         });
-        setView({ kind: "note", noteId: note.id });
+        setView({ kind: "note", noteId: created.id });
     }
     async function handleMarkForReview() {
         if (!card)
@@ -239,6 +242,7 @@ export const Flashcards = ({ setId, mode = "due" }) => {
         if (nextSession.reviewed > 0 &&
             nextSession.reviewed % 10 === 0) {
             await recordXp("reviewTenCards", XP_RULES.reviewTenCards);
+            await recordRewardPoints("reviewTenFlashcards", POINTS_RULES.reviewTenFlashcards);
         }
         setCards((prev) => prev.map((c) => (c.id === card.id ? updated : c)));
         setFlipped(false);
@@ -257,21 +261,26 @@ export const Flashcards = ({ setId, mode = "due" }) => {
         setFlipped(false);
     }
     if (!deck) {
-        return (_jsx("main", { className: "main empty", children: _jsx("p", { children: "Loading deck\u2026" }) }));
-    }
-    if (!card) {
-        return (_jsxs("main", { className: "main", children: [_jsx("div", { className: "topbar", children: _jsxs("label", { className: "search", children: [_jsx("span", { className: "search-icon", children: _jsx(SearchIcon, { size: 16 }) }), _jsx("input", { type: "search", placeholder: "Search decks, cards, or topics...", "aria-label": "Search flashcards", value: search, onChange: (e) => setSearch(e.target.value) })] }) }), _jsxs("div", { className: "main-inner flashcards-shell", children: [_jsx("div", { className: "flashcards-center", children: _jsxs("div", { className: "fr-empty", children: [_jsx(FlashcardIcon, { size: 36 }), _jsx("h2", { children: "All caught up!" }), _jsx("p", { children: currentMode === "weak"
-                                            ? "No weak cards left in this deck — strong work."
-                                            : currentMode === "due"
-                                                ? "No cards due in this deck right now."
-                                                : "This deck is empty. Add or generate cards to start studying." }), _jsxs("div", { className: "fr-empty-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setView({ kind: "flashcards" }), children: "Back to decks" }), _jsx("button", { type: "button", className: "btn-primary", onClick: () => setView({ kind: "flashcardSet", setId, mode: "cram" }), children: "Cram everything" })] })] }) }), _jsx(DeckDetailRail, { variant: "review", currentCard: null, currentCardRevealed: false, onAudio: () => {
-                                audioWantedRef.current = true;
-                            } })] })] }));
+        return (_jsxs(_Fragment, { children: [_jsx("main", { className: "main", children: _jsx("div", { className: "main-inner", children: _jsx("div", { className: "flashcards-center", children: _jsx(FlashcardsReviewHero, { children: _jsx("div", { className: "hero-greeting", children: _jsx("p", { children: "Loading deck\u2026" }) }) }) }) }) }), _jsx(DeckDetailRail, { variant: "review", currentCard: null, currentCardRevealed: false, onAudio: () => {
+                        audioWantedRef.current = true;
+                    } })] }));
     }
     const tone = cls ? toneFor(cls) : "sky";
     const subtitle = cls?.code ?? cls?.name ?? "Unfiled";
+    if (!card) {
+        const emptyProgressPct = Math.min(100, Math.round((session.reviewed / Math.max(originalTotal, 1)) * 100));
+        return (_jsxs(_Fragment, { children: [_jsx("main", { className: "main", children: _jsx("div", { className: "main-inner", children: _jsxs("div", { className: "flashcards-center", children: [_jsx(FlashcardsReviewHero, { children: _jsxs("header", { className: "fr-header", children: [_jsx("button", { type: "button", className: "fr-back", "aria-label": "Back to decks", onClick: () => withViewTransition(() => setView({ kind: "flashcards" })), children: _jsx(ArrowLeftIcon, { size: 14 }) }), _jsx("span", { className: `fr-deck-icon tone-${tone}`, children: cls ? iconFor(cls, 18) : _jsx(FlashcardIcon, { size: 18 }) }), _jsxs("div", { className: "fr-header-text", children: [_jsx("h1", { children: deck.title }), _jsx("span", { children: subtitle })] }), _jsxs("div", { className: "fr-progress", children: [_jsx("span", { className: "fr-progress-label", children: originalTotal === 0
+                                                            ? "No cards in queue"
+                                                            : `Card ${Math.min(idx + 1, originalTotal)} of ${originalTotal}` }), _jsx("div", { className: "fr-progress-bar", "aria-hidden": true, children: _jsx("span", { style: { width: `${emptyProgressPct}%` } }) }), _jsxs("span", { className: "fr-progress-pct", children: [emptyProgressPct, "%"] })] }), _jsxs("div", { className: "fr-header-chips", children: [_jsx("span", { className: "rail-chip rail-chip-sage", children: "Lecture" }), _jsx("span", { className: "rail-chip rail-chip-rose", children: "Exam 1" }), _jsxs("span", { className: "rail-chip rail-chip-amber", children: [_jsx(PlayIcon, { size: 10 }), _jsx("span", { children: "Study Session" })] })] })] }) }), _jsxs("div", { className: "fr-empty", children: [_jsx(FlashcardIcon, { size: 36 }), _jsx("h2", { children: "All caught up!" }), _jsx("p", { children: currentMode === "weak"
+                                                ? "No weak cards left in this deck — strong work."
+                                                : currentMode === "due"
+                                                    ? "No cards due in this deck right now."
+                                                    : "This deck is empty. Add or generate cards to start studying." }), _jsxs("div", { className: "fr-empty-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => withViewTransition(() => setView({ kind: "flashcards" })), children: "Back to decks" }), _jsx("button", { type: "button", className: "btn-primary", onClick: () => withViewTransition(() => setView({ kind: "flashcardSet", setId, mode: "cram" })), children: "Cram everything" })] })] })] }) }) }), _jsx(DeckDetailRail, { variant: "review", currentCard: null, currentCardRevealed: false, onAudio: () => {
+                        audioWantedRef.current = true;
+                    } })] }));
+    }
     const tag = pickTag(card.front);
-    return (_jsxs("main", { className: "main", children: [_jsx("div", { className: "topbar", children: _jsxs("label", { className: "search", children: [_jsx("span", { className: "search-icon", children: _jsx(SearchIcon, { size: 16 }) }), _jsx("input", { type: "search", placeholder: "Search decks, cards, or topics...", "aria-label": "Search flashcards", value: search, onChange: (e) => setSearch(e.target.value) })] }) }), _jsxs("div", { className: "main-inner flashcards-shell", children: [_jsxs("div", { className: "flashcards-center", children: [_jsxs("header", { className: "fr-header", children: [_jsx("button", { type: "button", className: "fr-back", "aria-label": "Back to decks", onClick: () => setView({ kind: "flashcards" }), children: _jsx(ArrowLeftIcon, { size: 14 }) }), _jsx("span", { className: `fr-deck-icon tone-${tone}`, children: cls ? iconFor(cls, 18) : _jsx(FlashcardIcon, { size: 18 }) }), _jsxs("div", { className: "fr-header-text", children: [_jsx("h1", { children: deck.title }), _jsx("span", { children: subtitle })] }), _jsxs("div", { className: "fr-progress", children: [_jsxs("span", { className: "fr-progress-label", children: ["Card ", Math.min(idx + 1, originalTotal), " of ", originalTotal] }), _jsx("div", { className: "fr-progress-bar", "aria-hidden": true, children: _jsx("span", { style: { width: `${progressPct}%` } }) }), _jsxs("span", { className: "fr-progress-pct", children: [progressPct, "%"] })] }), _jsxs("div", { className: "fr-header-chips", children: [_jsx("span", { className: "rail-chip rail-chip-sage", children: "Lecture" }), _jsx("span", { className: "rail-chip rail-chip-rose", children: "Exam 1" }), _jsxs("span", { className: "rail-chip rail-chip-amber", children: [_jsx(PlayIcon, { size: 10 }), _jsx("span", { children: "Study Session" })] })] })] }), _jsxs("section", { className: "fr-card-wrap", children: [_jsxs("div", { className: `fr-card${flipped ? " is-flipped" : ""}`, role: "button", tabIndex: 0, onClick: toggleFlip, onKeyDown: (e) => {
+    return (_jsxs(_Fragment, { children: [_jsx("main", { className: "main", children: _jsx("div", { className: "main-inner", children: _jsxs("div", { className: "flashcards-center", children: [_jsx(FlashcardsReviewHero, { children: _jsxs("header", { className: "fr-header", children: [_jsx("button", { type: "button", className: "fr-back", "aria-label": "Back to decks", onClick: () => withViewTransition(() => setView({ kind: "flashcards" })), children: _jsx(ArrowLeftIcon, { size: 14 }) }), _jsx("span", { className: `fr-deck-icon tone-${tone}`, children: cls ? iconFor(cls, 18) : _jsx(FlashcardIcon, { size: 18 }) }), _jsxs("div", { className: "fr-header-text", children: [_jsx("h1", { children: deck.title }), _jsx("span", { children: subtitle })] }), _jsxs("div", { className: "fr-progress", children: [_jsxs("span", { className: "fr-progress-label", children: ["Card ", Math.min(idx + 1, originalTotal), " of ", originalTotal] }), _jsx("div", { className: "fr-progress-bar", "aria-hidden": true, children: _jsx("span", { style: { width: `${progressPct}%` } }) }), _jsxs("span", { className: "fr-progress-pct", children: [progressPct, "%"] })] }), _jsxs("div", { className: "fr-header-chips", children: [_jsx("span", { className: "rail-chip rail-chip-sage", children: "Lecture" }), _jsx("span", { className: "rail-chip rail-chip-rose", children: "Exam 1" }), _jsxs("span", { className: "rail-chip rail-chip-amber", children: [_jsx(PlayIcon, { size: 10 }), _jsx("span", { children: "Study Session" })] })] })] }) }), _jsxs("section", { className: "fr-card-wrap", children: [_jsxs("div", { className: `fr-card${flipped ? " is-flipped" : ""}`, role: "button", tabIndex: 0, onClick: toggleFlip, onKeyDown: (e) => {
                                             if (e.key === " " || e.key === "Enter") {
                                                 e.preventDefault();
                                                 toggleFlip();
@@ -279,19 +288,19 @@ export const Flashcards = ({ setId, mode = "due" }) => {
                                         }, "aria-label": flipped ? "Hide answer" : "Show answer", children: [_jsx("span", { className: `fr-card-tag${flipped ? " answer" : ""}`, children: flipped ? "Answer" : "Question" }), _jsx("div", { className: "fr-card-text", children: flipped ? card.back : card.front }), !flipped && (_jsx("div", { className: "fr-card-hint", children: "Tap or click to reveal the answer \u2728" })), _jsxs("div", { className: "fr-card-meta", children: [_jsxs("span", { children: ["From: ", deck.title] }), _jsxs("span", { children: ["Tag: ", tag] }), _jsxs("span", { children: ["Difficulty: ", labelDifficulty(card.difficulty)] })] })] }), !flipped && (_jsxs("button", { type: "button", className: "fr-show-answer", onClick: toggleFlip, children: [_jsx(PlayIcon, { size: 14 }), _jsx("span", { children: "Show Answer" })] })), _jsxs("div", { className: "fr-quick-actions", children: [_jsxs("button", { type: "button", className: `fr-quick${readingAloud ? " active" : ""}`, onClick: readAloud, children: [_jsx(HeadphonesIcon, { size: 14 }), _jsx("span", { children: readingAloud ? "Stop" : "Read Aloud" })] }), _jsxs("button", { type: "button", className: "fr-quick", onClick: () => void handleAddNote(), children: [_jsx(PencilIcon, { size: 14 }), _jsx("span", { children: "Add Note" })] }), _jsxs("button", { type: "button", className: "fr-quick", onClick: () => void handleMarkForReview(), children: [_jsx(BookmarkIcon, { size: 14 }), _jsx("span", { children: "Mark for Review" })] })] })] }), flipped && (_jsxs("section", { className: "fr-grade-bar", "aria-label": "Grade card", children: [_jsx("p", { className: "fr-grade-prompt", children: "How well did you know it?" }), _jsxs("div", { className: "fr-grade-buttons", children: [_jsx(GradeButton, { tone: "rose", rating: "again", onClick: () => void rate("again") }), _jsx(GradeButton, { tone: "amber", rating: "hard", onClick: () => void rate("hard") }), _jsx(GradeButton, { tone: "sage", rating: "good", onClick: () => void rate("good") }), _jsx(GradeButton, { tone: "sky", rating: "easy", onClick: () => void rate("easy") })] })] })), _jsxs("section", { className: "fr-session", "aria-label": "Session stats", children: [_jsx(SessionPill, { icon: _jsx(TrophyIcon, { size: 14 }), tone: "amber", label: "Session XP", value: session.xp }), _jsx(SessionPill, { icon: _jsx(CheckIcon, { size: 14 }), tone: "sage", label: "Correct", value: session.correct }), _jsx(SessionPill, { icon: _jsx(FlameIcon, { size: 14 }), tone: "peach", label: "Streak", value: session.streak }), _jsx(SessionPill, { icon: _jsx(ClockIcon, { size: 14 }), tone: "lilac", label: "Time", value: formatSessionTime(session) })] }), _jsxs("section", { className: "fr-bottom", children: [_jsxs("div", { className: "fr-bottom-card", children: [_jsxs("header", { className: "fr-bottom-head", children: [_jsxs("span", { className: "fr-bottom-title", children: [_jsx(FlagIcon, { size: 14 }), "Session Goals"] }), _jsxs("button", { type: "button", className: "fh-modal-button-link", onClick: restart, children: [_jsx(RestartIcon, { size: 12 }), _jsx("span", { children: "Restart" })] })] }), _jsxs("ul", { className: "fr-goal-list", children: [_jsx(GoalRow, { label: `Review ${goals.reviewTarget} cards`, current: session.reviewed, target: goals.reviewTarget }), _jsx(GoalRow, { label: "Keep streak alive", current: session.streak, target: goals.keepStreak ? Math.max(5, goals.reviewTarget / 4) : 5, small: true }), _jsx(GoalRow, { label: `Master ${goals.masterWeak} weak cards`, current: session.weakResolved.length, target: Math.max(1, goals.masterWeak) })] })] }), _jsxs("div", { className: "fr-bottom-card", children: [_jsx("header", { className: "fr-bottom-head", children: _jsxs("span", { className: "fr-bottom-title", children: [_jsx(SparklesIcon, { size: 14 }), "Related Review"] }) }), related.length === 0 ? (_jsx("p", { className: "deck-rail-empty-msg", children: "No closely related decks yet." })) : (_jsx("div", { className: "fr-related-grid", children: related.map((r) => (_jsxs("button", { type: "button", className: "fr-related-tile", onClick: () => {
                                                         setSelectedDeck(r.id);
                                                         setView({ kind: "flashcardSet", setId: r.id, mode: currentMode });
-                                                    }, children: [_jsx("span", { className: "fr-related-title", children: r.title }), _jsxs("span", { className: "fr-related-meta", children: [r.cardCount, " cards"] })] }, r.id))) })), _jsxs("button", { type: "button", className: "fh-modal-button-link", onClick: () => setView({ kind: "flashcards" }), children: ["View all related topics", _jsx(ArrowRightIcon, { size: 11 })] })] })] })] }), _jsx(DeckDetailRail, { variant: "review", currentCard: card, currentCardRevealed: flipped, onAudio: () => {
-                            audioWantedRef.current = !audioWantedRef.current;
-                            if (audioWantedRef.current && card)
-                                speak(flipped ? card.back : card.front);
-                            else if (typeof window !== "undefined" && window.speechSynthesis) {
-                                window.speechSynthesis.cancel();
-                            }
-                        }, onAskAI: () => {
-                            if (cls)
-                                setView({ kind: "classAsk", classId: cls.id });
-                            else if (note)
-                                setView({ kind: "note", noteId: note.id });
-                        } })] })] }));
+                                                    }, children: [_jsx("span", { className: "fr-related-title", children: r.title }), _jsxs("span", { className: "fr-related-meta", children: [r.cardCount, " cards"] })] }, r.id))) })), _jsxs("button", { type: "button", className: "fh-modal-button-link", onClick: () => setView({ kind: "flashcards" }), children: ["View all related topics", _jsx(ArrowRightIcon, { size: 11 })] })] })] })] }) }) }), _jsx(DeckDetailRail, { variant: "review", currentCard: card, currentCardRevealed: flipped, onAudio: () => {
+                    audioWantedRef.current = !audioWantedRef.current;
+                    if (audioWantedRef.current && card)
+                        speak(flipped ? card.back : card.front);
+                    else if (typeof window !== "undefined" && window.speechSynthesis) {
+                        window.speechSynthesis.cancel();
+                    }
+                }, onAskAI: () => {
+                    if (cls)
+                        setView({ kind: "classAsk", classId: cls.id });
+                    else if (note)
+                        setView({ kind: "note", noteId: note.id });
+                } })] }));
 };
 /* ===== helpers ===== */
 function useResolvedMode(mode) {

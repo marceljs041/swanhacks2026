@@ -8,7 +8,7 @@
  * the once-per-install onboarding flag.
  */
 const STORAGE_KEY = "notegoat:profile";
-const EMPTY = { name: "", role: null, onboardedAt: null };
+const EMPTY = { name: "", role: null, onboardedAt: null, badges: [] };
 export function getProfile() {
     if (typeof window === "undefined")
         return EMPTY;
@@ -17,10 +17,15 @@ export function getProfile() {
         if (!raw)
             return EMPTY;
         const parsed = JSON.parse(raw);
+        const rawBadges = parsed.badges;
+        const badges = Array.isArray(rawBadges)
+            ? rawBadges.filter((b) => typeof b === "string")
+            : [];
         return {
             name: typeof parsed.name === "string" ? parsed.name : "",
             role: parsed.role ?? null,
             onboardedAt: typeof parsed.onboardedAt === "string" ? parsed.onboardedAt : null,
+            badges,
         };
     }
     catch {

@@ -341,10 +341,10 @@ const TakeView: FC<TakeProps> = ({ quiz, questions, cls, note, onSubmitted }) =>
       if (total > 0 && score === total) {
         await recordXp("perfectQuizBonus", XP_RULES.perfectQuizBonus);
       }
-      await recordRewardPoints(
-        "quizCorrectQuestions",
-        score * POINTS_RULES.quizQuestionCorrect,
-      );
+      await recordRewardPoints("completeQuiz", POINTS_RULES.completeQuiz);
+      if (total > 0 && score / total >= 0.8) {
+        await recordRewardPoints("scoreEightyPlus", POINTS_RULES.scoreEightyPlus);
+      }
       onSubmitted();
     } finally {
       setSubmitting(false);
@@ -759,7 +759,12 @@ const ResultsView: FC<ResultsProps> = ({
                 <KvStat label="Score" value={`${score} / ${total}`} />
                 <KvStat
                   label="Points earned"
-                  value={`+${score * POINTS_RULES.quizQuestionCorrect}`}
+                  value={`+${
+                    POINTS_RULES.completeQuiz +
+                    (total > 0 && score / total >= 0.8
+                      ? POINTS_RULES.scoreEightyPlus
+                      : 0)
+                  }`}
                 />
                 <KvStat
                   label="Correct"

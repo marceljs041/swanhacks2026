@@ -6,7 +6,7 @@
  * Pass `{ skipOutbox: true }` only when applying a row that came FROM the
  * cloud (during sync pull) — otherwise we'd echo the change back.
  */
-import { type AttachmentRow, type ClassRow, type FlashcardRow, type FlashcardSetRow, type NoteRow, type QuizQuestionRow, type QuizRow, type StudyPlanRow, type StudyTaskRow, type SyncOutboxRow } from "@studynest/shared";
+import { type AttachmentRow, type ClassRow, type FlashcardRow, type FlashcardSetRow, type NoteRow, type QuizAttemptRow, type QuizQuestionRow, type QuizRow, type QuizSessionRow, type StudyPlanRow, type StudyTaskRow, type RewardPointsEventRow, type SyncOutboxRow } from "@studynest/shared";
 interface WriteOpts {
     skipOutbox?: boolean;
 }
@@ -147,6 +147,33 @@ export declare function audioAttachmentsMissingTranscript(): Promise<number>;
  */
 export declare function unsyncedNotesCount(): Promise<number>;
 /**
+ * Cloud sync progress for the sidebar: combine pull cursor, last successful
+ * upload, and outbox backpressure. `lastActivityAt` is the more recent of pull
+ * vs push so “just now” reflects a real round-trip, not only an empty pull.
+ *
+ * Also includes the most recent outbox error so the UI can show why uploads
+ * are stuck instead of just a count.
+ */
+export declare function getCloudSyncMeta(): Promise<{
+    lastPulledAt: string | null;
+    lastPushedAt: string | null;
+    lastActivityAt: string | null;
+    pendingOutbox: number;
+    lastOutboxError: {
+        entity_type: string;
+        reason: string;
+    } | null;
+}>;
+/** Outbox rows that have failed at least once; surfaced in Settings/diagnostics. */
+export declare function listOutboxErrors(limit?: number): Promise<Array<{
+    id: string;
+    entity_type: string;
+    entity_id: string;
+    retry_count: number;
+    last_error: string;
+    created_at: string;
+}>>;
+/**
  * Existence checks for the AI Ready Queue heuristic — lets the UI pick
  * the next-best AI action per note (summarise → flashcards → quiz).
  */
@@ -286,7 +313,9 @@ export declare function upsertQuizQuestion(input: Partial<QuizQuestionRow> & {
     question: string;
     correct_answer: string;
 }, opts?: WriteOpts): Promise<QuizQuestionRow>;
+export declare function softDeleteQuiz(id: string): Promise<void>;
 export declare function listQuizzes(noteId?: string | null): Promise<QuizRow[]>;
+export declare function getQuiz(id: string): Promise<QuizRow | null>;
 export declare function listQuizQuestions(quizId: string): Promise<QuizQuestionRow[]>;
 export interface QuizStats {
     taken: number;
@@ -301,12 +330,90 @@ export interface QuizStats {
  * 70/100 attempt.
  */
 export declare function quizStats(): Promise<QuizStats>;
-export declare function recordQuizAttempt(args: {
+/** Aggregates for `@studynest/shared` user badges (desktop local DB). */
+export interface BadgeProgressMetrics {
+    noteCount: number;
+    classCount: number;
+    quizAttempts: number;
+    quizBestPct: number;
+    flashcardReviews: number;
+    streak: number;
+    totalXp: number;
+}
+export declare function fetchBadgeProgressMetrics(): Promise<BadgeProgressMetrics>;
+export interface QuizSummary {
+    quiz: QuizRow;
+    /** Resolved class — either via `quiz.class_id` directly or via `note.class_id`. */
+    classId: string | null;
+    /** Note when the quiz is sourced from a single note; null otherwise. */
+    noteTitle: string | null;
+    questionCount: number;
+    attempts: number;
+    /** Most recent attempt percentage (0–100), or null if untaken. */
+    lastScorePct: number | null;
+    /** Best attempt percentage. */
+    bestScorePct: number | null;
+    /** ISO ts of most recent attempt. */
+    lastAttemptAt: string | null;
+    /** Effective status — overrides stored `status` based on attempts/sessions. */
+    status: "new" | "in_progress" | "completed";
+    /** True when the most recent attempt percent < 70. */
+    needsReview: boolean;
+    /** Pending unsynced writes for this quiz id. */
+    unsynced: boolean;
+}
+/**
+ * One row per non-deleted quiz with computed last/best score and a
+ * resolved class id. We do the joins in SQL but compute percentages
+ * client-side because the existing `quiz_attempts.total` can be 0 for
+ * abandoned attempts.
+ */
+export declare function quizSummaries(): Promise<QuizSummary[]>;
+export interface QuizzesHubStats {
+    taken: number;
+    avgPct: number;
+    weakTopicCount: number;
+    /** Quiz-typed study tasks scheduled for today. */
+    dueToday: number;
+}
+export declare function quizzesHubStats(): Promise<QuizzesHubStats>;
+/** Topic labels surfaced by aggregating recent attempts' weak_topics_json. */
+export declare function recentWeakTopics(limit?: number): Promise<string[]>;
+export declare function quizAttemptsForQuiz(quizId: string): Promise<QuizAttemptRow[]>;
+export interface TopicPerformance {
+    topic: string;
+    total: number;
+    correct: number;
+    /** 0–100 rounded. */
+    pct: number;
+}
+/**
+ * For the most recent completed attempt on a quiz, group questions by
+ * `topic` and report correct / total counts. Used by the results screen.
+ */
+export declare function topicPerformance(quizId: string, attemptId?: string): Promise<TopicPerformance[]>;
+export interface RecordAttemptArgs {
     quiz_id: string;
     score: number;
     total: number;
-    answers: unknown;
-}): Promise<void>;
+    answers: Record<string, string>;
+    weak_topics: string[];
+    started_at: string;
+    finished_at: string;
+    time_spent_seconds: number;
+    completed?: boolean;
+}
+export declare function recordQuizAttempt(args: RecordAttemptArgs): Promise<QuizAttemptRow>;
+export declare function getQuizSession(quizId: string): Promise<QuizSessionRow | null>;
+export interface SaveQuizSessionInput {
+    quiz_id: string;
+    current_index: number;
+    answers: Record<string, string>;
+    /** Optional explicit start ts when creating a brand-new row. */
+    started_at?: string;
+}
+export declare function saveQuizSession(input: SaveQuizSessionInput, opts?: WriteOpts): Promise<QuizSessionRow>;
+export declare function clearQuizSession(quizId: string): Promise<void>;
 export declare function upsertStudyPlan(input: Partial<StudyPlanRow> & {
     title: string;
 }, opts?: WriteOpts): Promise<StudyPlanRow>;
@@ -315,10 +422,30 @@ export declare function upsertStudyTask(input: Partial<StudyTaskRow> & {
     type: StudyTaskRow["type"];
     scheduled_for: string;
 }, opts?: WriteOpts): Promise<StudyTaskRow>;
+/**
+ * Returns scheduled study tasks in `[fromIso, toIso)` from the legacy
+ * `study_tasks` table joined with the newer `calendar_events` table,
+ * adapted to the same `StudyTaskRow` shape so existing widgets
+ * (Home, RightPanel) keep working without modification while we
+ * migrate them to read calendar_events directly.
+ *
+ * Dedup rule: events whose id is `evt_legacy_<x>` were created by
+ * `ensureCalendarBackfill` and represent the same entity as the
+ * `study_tasks` row with id `<x>`. We hide those mirrors so the user
+ * doesn't see double rows. New events created via the Calendar UI
+ * (regular `evt_…` ids) flow through as synthetic study tasks.
+ */
 export declare function listTasksForRange(fromIso: string, toIso: string): Promise<StudyTaskRow[]>;
 export declare function recordXp(action: string, points: number): Promise<void>;
+export declare function upsertRewardPointsEvent(input: Partial<RewardPointsEventRow> & {
+    id: string;
+}, opts?: WriteOpts): Promise<RewardPointsEventRow>;
+export declare function recordRewardPoints(action: string, points: number): Promise<void>;
 export declare function totalXpToday(): Promise<number>;
 export declare function totalXp(): Promise<number>;
+export declare function totalRewardPoints(): Promise<number>;
+export declare function spendRewardPoints(action: string, cost: number): Promise<boolean>;
+export declare function goatUpgradePurchases(): Promise<Set<string>>;
 /**
  * Returns daily XP totals for the last `days` days (most recent first).
  * Used by the activity heatmap so we don't ship the full event log.
@@ -331,5 +458,22 @@ export declare function currentStreak(): Promise<number>;
 export declare function listOutbox(limit: number): Promise<SyncOutboxRow[]>;
 export declare function markOutboxSynced(ids: string[]): Promise<void>;
 export declare function recordOutboxFailure(id: string, error: string): Promise<void>;
+/**
+ * Clears `last_error` and resets `retry_count` so failed rows are retried as
+ * if fresh — useful after the cloud schema is fixed and we want sync to
+ * re-attempt previously stuck pushes immediately.
+ */
+export declare function resetOutboxErrors(): Promise<number>;
+/**
+ * Re-enqueues every existing local row into `sync_outbox` so the next push
+ * uploads them. Used when the outbox got out of sync with reality (e.g. rows
+ * created via `skipOutbox`, dev tooling, or a previous app version that
+ * marked things synced incorrectly).
+ *
+ * Strategy: delete any pending (un-synced) outbox row whose `(entity_type,
+ * entity_id)` matches a live local row, then insert a fresh "upsert"
+ * envelope per live row. Already-synced outbox history is left intact.
+ */
+export declare function reenqueueAllLocalRows(): Promise<number>;
 export {};
 //# sourceMappingURL=repositories.d.ts.map

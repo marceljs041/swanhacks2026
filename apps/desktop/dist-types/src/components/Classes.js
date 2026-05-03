@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ai } from "../lib/ai.js";
 import { archiveClass as archiveClassDb, classAggregates, listClasses, listDueFlashcards, listNotes, nextExamByClass, nextTaskByClass, softDeleteClass, upsertClass, upsertNote, weakTopicsForClass, } from "../db/repositories.js";
 import { useApp } from "../store.js";
-import { BRAND_HERO_URL } from "../lib/brand.js";
+import { BRAND_CLASS_HERO_URL } from "../lib/brand.js";
 import { withViewTransition } from "../lib/viewTransition.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { ConfirmDialog } from "./ui/ConfirmDialog.js";
@@ -33,11 +33,9 @@ export const Classes = () => {
     const [loaded, setLoaded] = useState(false);
     // `selectedId` is the class whose detail panel is shown to the right.
     // `null` means "nothing previewed" — in that case we render the global
-    // RightPanel so the user gets gamification/deadlines/etc. while still
-    // browsing classes. We only auto-pick the first class on the very
-    // first load, so the user's "Back" click sticks until they pick again.
+    // RightPanel. Opening the tab starts with nothing selected until the user
+    // picks a class.
     const [selectedId, setSelectedId] = useState(null);
-    const [hasAutoSelected, setHasAutoSelected] = useState(false);
     const [showCreate, setShowCreate] = useState(false);
     const [renaming, setRenaming] = useState(null);
     const [deleting, setDeleting] = useState(null);
@@ -65,18 +63,11 @@ export const Classes = () => {
         setSummaries(builtBase);
         setLoaded(true);
         setSelectedId((prev) => {
-            // Keep the existing preview if it still matches a real class.
             if (prev && builtBase.some((s) => s.cls.id === prev))
                 return prev;
-            // First-ever load: highlight the first class to match the design.
-            // After that, respect the user's "Back" click and stay unselected.
-            if (!hasAutoSelected) {
-                setHasAutoSelected(true);
-                return builtBase[0]?.cls.id ?? null;
-            }
             return null;
         });
-    }, [hasAutoSelected, setClasses]);
+    }, [setClasses]);
     useEffect(() => {
         void reload();
     }, [reload]);
@@ -201,7 +192,7 @@ export const Classes = () => {
 /* ================================================================== */
 /* Hero + toolbar (matches Home / Notes layout)                     */
 /* ================================================================== */
-const ClassesHero = () => (_jsxs("section", { className: "hero", children: [_jsxs("div", { className: "hero-main", children: [_jsx(HeroSearch, {}), _jsxs("div", { className: "hero-greeting", children: [_jsx("h1", { className: "hero-headline", children: "Classes" }), _jsx("p", { children: "Your courses, progress, and study tools all in one place." })] })] }), _jsx("div", { className: "hero-illustration", "aria-hidden": true, children: _jsx("img", { className: "hero-illustration-img", src: BRAND_HERO_URL, alt: "", decoding: "async" }) })] }));
+const ClassesHero = () => (_jsxs("section", { className: "hero", children: [_jsxs("div", { className: "hero-main", children: [_jsx(HeroSearch, {}), _jsxs("div", { className: "hero-greeting", children: [_jsx("h1", { className: "hero-headline", children: "Classes" }), _jsx("p", { children: "Your courses, progress, and study tools all in one place." })] })] }), _jsx("div", { className: "hero-illustration", "aria-hidden": true, children: _jsx("img", { className: "hero-illustration-img", src: BRAND_CLASS_HERO_URL, alt: "", decoding: "async" }) })] }));
 /* ================================================================== */
 /* Summary stats                                                      */
 /* ================================================================== */

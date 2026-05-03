@@ -12,6 +12,8 @@ export interface Profile {
     name: string;
     role: LearnerRole | null;
     onboardedAt: string | null;
+    /** Unlocked badge ids (see `@studynest/shared` / `badges`). */
+    badges: string[];
 }
 export declare function getProfile(): Profile;
 export declare function saveProfile(p: Profile): void;

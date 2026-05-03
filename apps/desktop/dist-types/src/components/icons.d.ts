@@ -61,6 +61,12 @@ export declare const TargetIcon: FC<IconProps>;
 export declare const GraphIcon: FC<IconProps>;
 export declare const LightningIcon: FC<IconProps>;
 export declare const RestartIcon: FC<IconProps>;
+export declare const PinIcon: FC<IconProps>;
+export declare const BellIcon: FC<IconProps>;
+export declare const LockIcon: FC<IconProps>;
+export declare const LinkIcon: FC<IconProps>;
+export declare const RepeatIcon: FC<IconProps>;
+export declare const ListIcon: FC<IconProps>;
 /**
  * The Note Goat mascot. Vector-only so it scales crisp in any theme.
  * Used in the sidebar logo and the home hero. Colours follow the active

@@ -72,4 +72,4 @@ See `.env.example` for required environment variables.
 
 ## Hackathon demo
 
-Run `pnpm --filter @studynest/desktop seed` to populate a class, notes, and study plan, then follow [`docs/demo-script.md`](docs/demo-script.md).
+Run `pnpm --filter @notegoat/desktop seed` to populate a class, notes, and study plan, then follow [`docs/demo-script.md`](docs/demo-script.md).
