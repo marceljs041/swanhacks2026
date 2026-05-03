@@ -43,6 +43,7 @@ SYNCABLE_TABLES = (
     "calendar_events",
     "checklist_items",
     "xp_events",
+    "reward_points_events",
 )
 
 # Primary key column per table (default "id"). Must match client envelopes / Postgres.
@@ -60,7 +61,7 @@ def _entity_id_from_row(table: str, row: dict[str, Any]) -> str:
     return str(val)
 
 # Tables that should never reject a stale write — append-only or merge-by-id.
-NEVER_CONFLICT = {"xp_events", "quiz_attempts"}
+NEVER_CONFLICT = {"xp_events", "quiz_attempts", "reward_points_events"}
 
 
 def _now_iso() -> str:

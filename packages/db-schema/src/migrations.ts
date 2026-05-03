@@ -125,6 +125,19 @@ export const MIGRATIONS: Migration[] = [
     `,
     idempotentAddColumn: true,
   },
+  {
+    version: 25,
+    name: "reward_points_events",
+    sql: /* sql */ `
+      create table if not exists reward_points_events (
+        id text primary key,
+        action text not null,
+        points integer not null,
+        created_at text not null
+      );
+      create index if not exists idx_reward_points_events_created_at on reward_points_events(created_at);
+    `,
+  },
 ];
 
 /**

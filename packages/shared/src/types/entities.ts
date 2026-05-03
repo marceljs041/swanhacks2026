@@ -185,6 +185,14 @@ export interface XpEventRow {
   created_at: Iso8601;
 }
 
+/** Append-only ledger for reward points (e.g. quiz performance). Same shape as XP events but separate totals. */
+export interface RewardPointsEventRow {
+  id: string;
+  action: string;
+  points: number;
+  created_at: Iso8601;
+}
+
 /**
  * Calendar feature.
  *

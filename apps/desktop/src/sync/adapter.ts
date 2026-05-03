@@ -21,6 +21,7 @@ import {
   upsertStudyPlan,
   upsertStudyTask,
   saveQuizSession,
+  upsertRewardPointsEvent,
 } from "../db/repositories.js";
 import {
   upsertEvent as upsertCalendarEvent,
@@ -118,6 +119,17 @@ export const desktopSyncDb: SyncDb = {
         return "applied";
       case "checklist_items":
         await upsertChecklistItem(p as any, skipOutbox);
+        return "applied";
+      case "reward_points_events":
+        await upsertRewardPointsEvent(
+          {
+            id: String(p.id),
+            action: String(p.action ?? "unknown"),
+            points: Number(p.points ?? 0),
+            created_at: String(p.created_at ?? nowIso()),
+          },
+          skipOutbox,
+        );
         return "applied";
       default:
         return "skipped";
