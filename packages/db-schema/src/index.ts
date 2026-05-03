@@ -1,2 +1,2 @@
-export * from "./sql.js";
-export * from "./migrations.js";
+export * from "./sql";
+export * from "./migrations";

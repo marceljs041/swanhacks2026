@@ -1,3 +1,3 @@
-export * from "./entities.js";
-export * from "./sync.js";
-export * from "./ai.js";
+export * from "./entities";
+export * from "./sync";
+export * from "./ai";

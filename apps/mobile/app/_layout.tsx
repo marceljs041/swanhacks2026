@@ -1,6 +1,8 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { useFonts } from "expo-font";
+import { Ionicons } from "@expo/vector-icons";
 import { SyncWorker } from "@studynest/sync";
 import { getDb } from "@/db/client";
 import { mobileSyncDb, mobileTransport } from "@/sync/adapter";
@@ -11,6 +13,9 @@ let workerStarted = false;
 
 export default function RootLayout() {
   const setSyncStatus = useApp((s) => s.setSyncStatus);
+  const [fontsLoaded] = useFonts({
+    ...Ionicons.font,
+  });
 
   useEffect(() => {
     if (workerStarted) return;
@@ -25,6 +30,10 @@ export default function RootLayout() {
     worker.start();
     return () => worker.stop();
   }, [setSyncStatus]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <>

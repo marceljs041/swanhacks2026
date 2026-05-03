@@ -1,3 +1,4 @@
 app
 local_sidecar
 scripts
+venv

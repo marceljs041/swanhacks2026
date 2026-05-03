@@ -1,4 +1,4 @@
-import { CREATE_INDEXES_SQL, CREATE_TABLES_SQL, SCHEMA_VERSION } from "./sql.js";
+import { CREATE_INDEXES_SQL, CREATE_TABLES_SQL, SCHEMA_VERSION } from "./sql";
 
 /**
  * A migration is a numbered, idempotent SQL block. The runner records the
