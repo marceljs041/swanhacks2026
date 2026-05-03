@@ -19,6 +19,7 @@ import {
   NoteIcon,
   QuizIcon,
   SettingsIcon,
+  TrophyIcon,
 } from "./icons.js";
 
 interface NavItem {
@@ -35,6 +36,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { key: "home",       label: "Home",       icon: <HomeIcon />,      view: { kind: "home" } },
   { key: "notes",      label: "Notes",      icon: <NoteIcon />,      view: { kind: "notes" } },
+  { key: "points",     label: "Points",     icon: <TrophyIcon />,    view: { kind: "points" } },
   { key: "classes",    label: "Classes",    icon: <ClassIcon />,     view: { kind: "classes" } },
   { key: "flashcards", label: "Flashcards", icon: <FlashcardIcon />, view: { kind: "flashcards" } },
   { key: "quizzes",    label: "Quizzes",    icon: <QuizIcon />,      view: { kind: "quizzes" } },

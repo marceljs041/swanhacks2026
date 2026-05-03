@@ -27,6 +27,7 @@ import {
 export type View =
   | { kind: "home" }
   | { kind: "notes" }
+  | { kind: "points" }
   | { kind: "allNotes" }
   | { kind: "note"; noteId: string }
   | { kind: "classes" }

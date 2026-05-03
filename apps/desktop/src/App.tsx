@@ -13,6 +13,7 @@ import { QuizzesHub } from "./components/QuizzesHub.js";
 import { Flashcards } from "./components/Flashcards.js";
 import { Quiz } from "./components/Quiz.js";
 import { Calendar } from "./components/Calendar.js";
+import { Points } from "./components/Points.js";
 import { Settings } from "./components/Settings.js";
 import { RightPanel } from "./components/RightPanel.js";
 import { Onboarding } from "./components/Onboarding.js";
@@ -154,6 +155,7 @@ function renderMain(view: ReturnType<typeof useApp.getState>["view"]) {
   switch (view.kind) {
     case "home":          return <Home />;
     case "notes":         return <NotesList />;
+    case "points":        return <Points />;
     case "allNotes":      return <AllNotes />;
     case "note":          return <NoteEditor noteId={view.noteId} />;
     case "classes":       return <Classes />;

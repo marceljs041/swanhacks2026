@@ -2225,6 +2225,35 @@ export async function totalRewardPoints(): Promise<number> {
   return row.t;
 }
 
+export async function spendRewardPoints(action: string, cost: number): Promise<boolean> {
+  if (cost <= 0) return false;
+  const available = await totalRewardPoints();
+  if (available < cost) return false;
+  await upsertRewardPointsEvent({
+    id: ulid("rp"),
+    action,
+    points: -Math.abs(cost),
+    created_at: nowIso(),
+  });
+  return true;
+}
+
+export async function goatUpgradePurchases(): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = db
+    .prepare(
+      `select action from reward_points_events
+       where action like 'goatUpgrade:%' and points < 0`,
+    )
+    .all() as Array<{ action: string }>;
+  const out = new Set<string>();
+  for (const r of rows) {
+    const id = r.action.slice("goatUpgrade:".length).trim();
+    if (id) out.add(id);
+  }
+  return out;
+}
+
 /**
  * Returns daily XP totals for the last `days` days (most recent first).
  * Used by the activity heatmap so we don't ship the full event log.

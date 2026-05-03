@@ -34,6 +34,7 @@ import {
   listNotes,
   listTasksForRange,
   recordXp,
+  totalRewardPoints,
   totalXp,
   totalXpToday,
   upsertNote,
@@ -484,11 +485,14 @@ function levelFromXp(xp: number): { level: number; floor: number; ceiling: numbe
 function LevelCard(): JSX.Element {
   const xpToday = useApp((s) => s.xpToday);
   const [lifetime, setLifetime] = useState(0);
+  const [rewardPoints, setRewardPoints] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    void totalXp().then((t) => {
-      if (!cancelled) setLifetime(t);
+    void Promise.all([totalXp(), totalRewardPoints()]).then(([xp, points]) => {
+      if (cancelled) return;
+      setLifetime(xp);
+      setRewardPoints(points);
     });
     return () => {
       cancelled = true;
@@ -514,6 +518,10 @@ function LevelCard(): JSX.Element {
         <span className="val">
           {lifetime.toLocaleString()} / {ceiling.toLocaleString()}
         </span>
+      </div>
+      <div className="xp-row">
+        <span className="label">Points</span>
+        <span className="val">{rewardPoints.toLocaleString()}</span>
       </div>
       <div className="level-bar">
         <span style={{ width: `${pct * 100}%` }} />
