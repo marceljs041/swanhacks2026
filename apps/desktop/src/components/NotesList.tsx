@@ -652,8 +652,8 @@ const ContinueWritingPapersArt: FC = () => (
       width="36"
       height="40"
       rx="3"
-      fill="#FFF8F2"
-      stroke="#E5C9A8"
+      fill="var(--color-surfaceMuted)"
+      stroke="var(--color-border)"
       strokeWidth="1.5"
     />
     <rect
@@ -662,8 +662,8 @@ const ContinueWritingPapersArt: FC = () => (
       width="38"
       height="42"
       rx="3"
-      fill="#FFFBF6"
-      stroke="#D9B48C"
+      fill="var(--color-surface)"
+      stroke="var(--color-borderStrong)"
       strokeWidth="1.5"
     />
     <rect
@@ -672,14 +672,14 @@ const ContinueWritingPapersArt: FC = () => (
       width="40"
       height="46"
       rx="4"
-      fill="#FFFCF9"
-      stroke="#C98756"
+      fill="var(--color-surfaceRaised)"
+      stroke="var(--color-primary)"
       strokeWidth="1.75"
     />
-    <line x1="9" y1="14" x2="33" y2="14" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
-    <line x1="9" y1="20" x2="31" y2="20" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
-    <line x1="9" y1="26" x2="29" y2="26" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
-    <line x1="9" y1="32" x2="27" y2="32" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="14" x2="33" y2="14" stroke="var(--color-textSubtle)" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="20" x2="31" y2="20" stroke="var(--color-textSubtle)" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="26" x2="29" y2="26" stroke="var(--color-textSubtle)" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="32" x2="27" y2="32" stroke="var(--color-textSubtle)" strokeWidth="1.15" strokeLinecap="round" />
   </svg>
 );
 
