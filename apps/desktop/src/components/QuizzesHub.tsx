@@ -25,6 +25,11 @@ import { QuizDetailRail } from "./QuizDetailRail.js";
 import { QuizGenerationModal } from "./QuizGenerationModal.js";
 import { BRAND_QUIZ_HERO_URL } from "../lib/brand.js";
 import {
+  getQuizGenerationQueueState,
+  subscribeQuizGenerationQueue,
+  type QuizQueueSnapshot,
+} from "../lib/quizGenerationQueue.js";
+import {
   ArrowRightIcon,
   CalendarIcon,
   GraphIcon,
@@ -65,6 +70,9 @@ export const QuizzesHub: FC = () => {
   const [filter, setFilter] = useState<FilterId>("all");
   const [generateOpen, setGenerateOpen] = useState(false);
   const [reload, setReload] = useState(0);
+  const [queueState, setQueueState] = useState<QuizQueueSnapshot>(
+    getQuizGenerationQueueState(),
+  );
 
   useEffect(() => {
     void (async () => {
@@ -87,6 +95,8 @@ export const QuizzesHub: FC = () => {
     setQuizzesDetailPanelOpen(!!selectedQuizId);
     return () => setQuizzesDetailPanelOpen(false);
   }, [selectedQuizId, setQuizzesDetailPanelOpen]);
+
+  useEffect(() => subscribeQuizGenerationQueue(setQueueState), []);
 
   const selectQuizPreview = useCallback(
     (id: string | null) => {
@@ -245,6 +255,8 @@ export const QuizzesHub: FC = () => {
                 onClick={practiceAgain}
               />
             </section>
+
+            {queueState.total > 0 && <QuizGenerationQueuePanel queue={queueState} />}
 
             <FilterRow
               classes={classes}
@@ -548,6 +560,29 @@ const DeckStatPill: FC<{ label: string; value: number | string }> = ({ label, va
     <span className="qz-deck-pill-value">{value}</span>
     <span className="qz-deck-pill-label">{label}</span>
   </div>
+);
+
+const QuizGenerationQueuePanel: FC<{ queue: QuizQueueSnapshot }> = ({ queue }) => (
+  <section className="qz-queue-panel" aria-live="polite">
+    <header className="qz-queue-head">
+      <span className="qz-queue-title">Quiz generation queue</span>
+      <span className="qz-queue-count">{queue.total} in queue</span>
+    </header>
+    {queue.active && (
+      <p className="qz-queue-active">
+        <strong>Generating:</strong> {queue.active.label}
+      </p>
+    )}
+    {queue.pending.length > 0 && (
+      <ul className="qz-queue-list">
+        {queue.pending.map((item, idx) => (
+          <li key={item.id}>
+            <span className="qz-queue-order">{idx + 1}.</span> {item.label}
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
 );
 
 /* =========== helpers =========== */

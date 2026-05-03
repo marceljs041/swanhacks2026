@@ -20,6 +20,7 @@ import type {
 } from "@studynest/shared";
 import { XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
+import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
 import {
   listClasses,
   listFlashcardSets,
@@ -178,47 +179,52 @@ export const QuizGenerationModal: FC<Props> = ({
     }
     setBusy(true);
     try {
-      const ctx = await buildContent();
-      if (!ctx.content || ctx.content.length < MIN_CONTENT_LEN) {
-        throw new Error(
-          "Source content is too short to generate a quality quiz.",
-        );
-      }
-      const types = pickTypes(type);
-      const res = await ai.quiz({
-        note_id: ctx.note_id ?? "",
-        title: ctx.title,
-        content: ctx.content,
-        count,
-        types,
-      });
-      const quiz = await upsertQuiz({
-        title: ctx.title,
-        note_id: ctx.note_id,
-        class_id: ctx.class_id,
-        description: descriptionFor(ctx, count, difficulty),
-        difficulty,
-        status: "new",
-        source_type: ctx.source_type,
-        source_ids_json: JSON.stringify(ctx.source_ids),
-        tags_json: JSON.stringify(defaultTagsFor(ctx.source_type)),
-      });
-      let position = 0;
-      for (const q of res.questions) {
-        await upsertQuizQuestion({
-          quiz_id: quiz.id,
-          type: q.type,
-          question: q.question,
-          options_json:
-            q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
-          correct_answer: String(q.answer),
-          explanation: includeExplanations ? q.explanation ?? null : null,
-          hint: includeHints ? deriveHint(q) : null,
-          source_note_id: ctx.note_id,
-          position: position++,
+      const quiz = await enqueueQuizGeneration(
+        `Generate quiz from ${sourceTitle || source}`,
+        async () => {
+        const ctx = await buildContent();
+        if (!ctx.content || ctx.content.length < MIN_CONTENT_LEN) {
+          throw new Error(
+            "Source content is too short to generate a quality quiz.",
+          );
+        }
+        const types = pickTypes(type);
+        const res = await ai.quiz({
+          note_id: ctx.note_id ?? "",
+          title: ctx.title,
+          content: ctx.content,
+          count,
+          types,
         });
-      }
-      await recordXp("generateFlashcards", XP_RULES.generateFlashcards);
+        const quizRow = await upsertQuiz({
+          title: ctx.title,
+          note_id: ctx.note_id,
+          class_id: ctx.class_id,
+          description: descriptionFor(ctx, count, difficulty),
+          difficulty,
+          status: "new",
+          source_type: ctx.source_type,
+          source_ids_json: JSON.stringify(ctx.source_ids),
+          tags_json: JSON.stringify(defaultTagsFor(ctx.source_type)),
+        });
+        let position = 0;
+        for (const q of res.questions) {
+          await upsertQuizQuestion({
+            quiz_id: quizRow.id,
+            type: q.type,
+            question: q.question,
+            options_json:
+              q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
+            correct_answer: String(q.answer),
+            explanation: includeExplanations ? q.explanation ?? null : null,
+            hint: includeHints ? deriveHint(q) : null,
+            source_note_id: ctx.note_id,
+            position: position++,
+          });
+        }
+        await recordXp("generateFlashcards", XP_RULES.generateFlashcards);
+        return quizRow;
+      });
       onGenerated(quiz.id);
     } catch (e) {
       setError((e as Error).message || "Couldn't generate a quiz.");
