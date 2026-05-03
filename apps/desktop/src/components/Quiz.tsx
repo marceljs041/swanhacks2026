@@ -22,6 +22,7 @@ import {
   listQuizQuestions,
   quizAttemptsForQuiz,
   recordQuizAttempt,
+  recordRewardPoints,
   recordXp,
   saveQuizSession,
   topicPerformance,
@@ -38,7 +39,7 @@ import type {
   QuizQuestionRow,
   QuizRow,
 } from "@studynest/shared";
-import { ulid, XP_RULES } from "@studynest/shared";
+import { POINTS_RULES, ulid, XP_RULES } from "@studynest/shared";
 import { withViewTransition } from "../lib/viewTransition.js";
 import { BRAND_QUIZ_HERO_URL } from "../lib/brand.js";
 import { QuizDetailRail } from "./QuizDetailRail.js";
@@ -340,6 +341,10 @@ const TakeView: FC<TakeProps> = ({ quiz, questions, cls, note, onSubmitted }) =>
       if (total > 0 && score === total) {
         await recordXp("perfectQuizBonus", XP_RULES.perfectQuizBonus);
       }
+      await recordRewardPoints(
+        "quizCorrectQuestions",
+        score * POINTS_RULES.quizQuestionCorrect,
+      );
       onSubmitted();
     } finally {
       setSubmitting(false);
@@ -752,6 +757,10 @@ const ResultsView: FC<ResultsProps> = ({
               </div>
               <div className="qz-result-stats">
                 <KvStat label="Score" value={`${score} / ${total}`} />
+                <KvStat
+                  label="Points earned"
+                  value={`+${score * POINTS_RULES.quizQuestionCorrect}`}
+                />
                 <KvStat
                   label="Correct"
                   value={`${score} of ${total}`}

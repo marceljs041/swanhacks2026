@@ -117,6 +117,19 @@ export const MIGRATIONS: Migration[] = [
       create index if not exists idx_checklist_items_event_id on checklist_items(event_id) where deleted_at is null;
     `,
   },
+  {
+    version: 24,
+    name: "reward_points_events",
+    sql: /* sql */ `
+      create table if not exists reward_points_events (
+        id text primary key,
+        action text not null,
+        points integer not null,
+        created_at text not null
+      );
+      create index if not exists idx_reward_points_events_created_at on reward_points_events(created_at);
+    `,
+  },
 ];
 
 /**

@@ -19,3 +19,9 @@ export const XP_RULES = {
 } as const;
 
 export type XpAction = keyof typeof XP_RULES;
+
+/** Redeemable-style points ledger (separate from XP). */
+export const POINTS_RULES = {
+  /** Per question answered correctly when a quiz attempt is finished. */
+  quizQuestionCorrect: 3,
+} as const;

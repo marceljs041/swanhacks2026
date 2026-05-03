@@ -173,6 +173,13 @@ create table if not exists xp_events (
   created_at text not null
 );
 
+create table if not exists reward_points_events (
+  id text primary key,
+  action text not null,
+  points integer not null,
+  created_at text not null
+);
+
 create table if not exists calendar_events (
   id text primary key,
   title text not null,
@@ -259,6 +266,7 @@ create index if not exists idx_calendar_events_class_id on calendar_events(class
 create index if not exists idx_calendar_events_study_plan_id on calendar_events(study_plan_id) where deleted_at is null;
 create index if not exists idx_checklist_items_event_id on checklist_items(event_id) where deleted_at is null;
 create index if not exists idx_xp_events_created_at on xp_events(created_at);
+create index if not exists idx_reward_points_events_created_at on reward_points_events(created_at);
 create index if not exists idx_sync_outbox_unsynced on sync_outbox(created_at) where synced_at is null;
 `;
 
@@ -285,6 +293,7 @@ export const SYNCABLE_ENTITIES = [
   "calendar_events",
   "checklist_items",
   "xp_events",
+  "reward_points_events",
 ] as const;
 
 export type SyncableEntity = (typeof SYNCABLE_ENTITIES)[number];
@@ -307,4 +316,5 @@ export const APPLY_ORDER: SyncableEntity[] = [
   "calendar_events",
   "checklist_items",
   "xp_events",
+  "reward_points_events",
 ];

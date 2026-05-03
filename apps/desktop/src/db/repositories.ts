@@ -18,6 +18,7 @@ import {
   type QuizSessionRow,
   type StudyPlanRow,
   type StudyTaskRow,
+  type RewardPointsEventRow,
   type SyncOutboxRow,
   type XpEventRow,
   nowIso,
@@ -2088,6 +2089,37 @@ export async function recordXp(action: string, points: number): Promise<void> {
   await enqueue("xp_events", row.id, "upsert", row);
 }
 
+export async function upsertRewardPointsEvent(
+  input: Partial<RewardPointsEventRow> & { id: string },
+  opts: WriteOpts = {},
+): Promise<RewardPointsEventRow> {
+  const db = await getDb();
+  const row: RewardPointsEventRow = {
+    id: input.id,
+    action: input.action ?? "unknown",
+    points: input.points ?? 0,
+    created_at: input.created_at ?? nowIso(),
+  };
+  db.prepare(
+    `insert into reward_points_events (id, action, points, created_at)
+     values (@id, @action, @points, @created_at)
+     on conflict(id) do update set
+       action=excluded.action, points=excluded.points, created_at=excluded.created_at`,
+  ).run(row);
+  if (!opts.skipOutbox) await enqueue("reward_points_events", row.id, "upsert", row);
+  return row;
+}
+
+export async function recordRewardPoints(action: string, points: number): Promise<void> {
+  if (points <= 0) return;
+  await upsertRewardPointsEvent({
+    id: ulid("rp"),
+    action,
+    points,
+    created_at: nowIso(),
+  });
+}
+
 export async function totalXpToday(): Promise<number> {
   const db = await getDb();
   const start = new Date();
@@ -2102,6 +2134,14 @@ export async function totalXp(): Promise<number> {
   const db = await getDb();
   const row = db
     .prepare("select coalesce(sum(points), 0) as t from xp_events")
+    .get() as { t: number };
+  return row.t;
+}
+
+export async function totalRewardPoints(): Promise<number> {
+  const db = await getDb();
+  const row = db
+    .prepare("select coalesce(sum(points), 0) as t from reward_points_events")
     .get() as { t: number };
   return row.t;
 }

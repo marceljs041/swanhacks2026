@@ -42,10 +42,11 @@ SYNCABLE_TABLES = (
     "calendar_events",
     "checklist_items",
     "xp_events",
+    "reward_points_events",
 )
 
 # Tables that should never reject a stale write — append-only or merge-by-id.
-NEVER_CONFLICT = {"xp_events", "quiz_attempts"}
+NEVER_CONFLICT = {"xp_events", "quiz_attempts", "reward_points_events"}
 
 
 def _now_iso() -> str:
