@@ -10,8 +10,13 @@ export default function Study() {
   const streak = useApp((s) => s.streak);
 
   const refresh = useCallback(async () => {
-    const [x, s] = await Promise.all([totalXpToday(), currentStreak()]);
-    setXp(x, s);
+    try {
+      const [x, s] = await Promise.all([totalXpToday(), currentStreak()]);
+      setXp(x, s);
+    } catch (e) {
+      console.warn("Failed to load XP/streak", e);
+      setXp(0, 0);
+    }
   }, [setXp]);
 
   useEffect(() => {

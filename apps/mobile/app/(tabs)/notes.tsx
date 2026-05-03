@@ -12,7 +12,13 @@ export default function Notes() {
   const router = useRouter();
 
   const refresh = useCallback(async () => {
-    setNotes(await listNotes(null));
+    try {
+      const notesData = await listNotes(null);
+      setNotes(notesData);
+    } catch (e) {
+      console.warn("Failed to load notes", e);
+      setNotes([]);
+    }
   }, []);
 
   useFocusEffect(

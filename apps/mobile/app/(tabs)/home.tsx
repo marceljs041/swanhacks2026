@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback } from "react";
@@ -10,6 +11,14 @@ import type { NoteRow } from "@studynest/shared";
 import { SyncPill } from "@/components/SyncPill";
 
 export default function Home() {
+  return (
+    <ErrorBoundary>
+      <HomeContent />
+    </ErrorBoundary>
+  );
+}
+
+function HomeContent() {
   const xp = useApp((s) => s.xpToday);
   const streak = useApp((s) => s.streak);
   const setXp = useApp((s) => s.setXp);

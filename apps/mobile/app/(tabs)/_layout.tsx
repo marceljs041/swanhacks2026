@@ -8,6 +8,8 @@ const tabIconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   capture: "mic",
   study: "school",
   calendar: "calendar",
+  settings: "settings",
+  notfound: "alert-circle",
 };
 
 export default function TabsLayout() {
@@ -34,6 +36,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="capture" options={{ title: "Capture" }} />
       <Tabs.Screen name="study" options={{ title: "Study" }} />
       <Tabs.Screen name="calendar" options={{ title: "Calendar" }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+      <Tabs.Screen name="notfound" options={{ title: "Not Found" }} />
     </Tabs>
   );
 }

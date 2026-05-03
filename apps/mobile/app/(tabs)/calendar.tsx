@@ -12,7 +12,8 @@ function startOfWeek(d: Date): Date {
 }
 
 export default function Calendar() {
-  const [tasks, setTasks] = useState<StudyTaskRow[]>([]);
+const [tasks, setTasks] = useState<StudyTaskRow[]>([]);
+const [hasError, setHasError] = useState(false);
   const [weekStart, weekEnd] = useMemo(() => {
     const start = startOfWeek(new Date());
     const end = new Date(start);
@@ -23,9 +24,11 @@ export default function Calendar() {
   const refresh = useCallback(async () => {
     try {
       setTasks(await listTasksForRange(weekStart.toISOString(), weekEnd.toISOString()));
+      setHasError(false);
     } catch (error) {
       console.warn("Calendar refresh failed", error);
       setTasks([]);
+      setHasError(true);
     }
   }, [weekStart, weekEnd]);
 
@@ -48,6 +51,11 @@ export default function Calendar() {
       <Text style={[typography.h2, { color: colors.text, marginBottom: spacing.sm }]}>
         This week
       </Text>
+      {hasError && (
+        <Text style={{ color: colors.textMuted, marginTop: spacing.sm, fontSize: 13 }}>
+          Error loading tasks. Please try again.
+        </Text>
+      )}
       {days.map((d) => {
         const ds = d.toISOString().slice(0, 10);
         const dayTasks = tasks.filter((t) => t.scheduled_for?.slice(0, 10) === ds);

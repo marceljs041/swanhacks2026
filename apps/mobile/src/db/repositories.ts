@@ -24,7 +24,7 @@ async function enqueue(
   entity_type: SyncableEntity,
   entity_id: string,
   operation: "upsert" | "delete",
-  payload: Record<string, unknown>,
+  payload: any,
 ): Promise<void> {
   const db = await getDb();
   const ts = nowIso();
@@ -77,24 +77,29 @@ export async function upsertClass(
        updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
     [row.id, row.name, row.code, row.color, row.created_at, row.updated_at, row.deleted_at],
   );
-  if (!opts.skipOutbox) await enqueue("classes", row.id, "upsert", row);
+  if (!opts.skipOutbox) await enqueue("classes", row.id, "upsert", Object.assign({}, row));
   return row;
 }
 
 // ---------------- Notes ----------------
 
-export async function listNotes(classId?: string | null): Promise<NoteRow[]> {
-  const db = await getDb();
-  if (classId) {
-    return (await db.getAllAsync(
-      "select * from notes where deleted_at is null and class_id = ? order by updated_at desc",
-      [classId],
-    )) as NoteRow[];
+  export async function listNotes(classId?: string | null): Promise<NoteRow[]> {
+    try {
+      const db = await getDb();
+      if (classId) {
+        return (await db.getAllAsync(
+          "select * from notes where deleted_at is null and class_id = ? order by updated_at desc",
+          [classId],
+        )) as NoteRow[];
+      }
+      return (await db.getAllAsync(
+        "select * from notes where deleted_at is null order by updated_at desc",
+      )) as NoteRow[];
+    } catch (e) {
+      console.error("Error fetching notes:", e);
+      return [];
+    }
   }
-  return (await db.getAllAsync(
-    "select * from notes where deleted_at is null order by updated_at desc",
-  )) as NoteRow[];
-}
 
 export async function getNote(id: string): Promise<NoteRow | null> {
   const db = await getDb();
