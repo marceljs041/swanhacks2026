@@ -9,8 +9,6 @@ import { mobileSyncDb, mobileTransport } from "@/sync/adapter";
 import { useApp } from "@/store";
 import { colors } from "@/theme";
 
-let workerStarted = false;
-
 export default function RootLayout() {
   const setSyncStatus = useApp((s) => s.setSyncStatus);
   const [fontsLoaded] = useFonts({
@@ -18,8 +16,6 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (workerStarted) return;
-    workerStarted = true;
     void getDb();
     const worker = new SyncWorker({
       db: mobileSyncDb,

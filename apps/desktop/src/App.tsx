@@ -18,9 +18,16 @@ import { RightPanel } from "./components/RightPanel.js";
 import { Onboarding } from "./components/Onboarding.js";
 import { useApp } from "./store.js";
 import { desktopSyncDb, desktopTransport } from "./sync/adapter.js";
+import {
+  registerDesktopSyncWorker,
+  unregisterDesktopSyncWorker,
+} from "./sync/controller.js";
+import { getCloudSyncMeta } from "./db/repositories.js";
 import { getDb } from "./db/client.js";
+import { registerDeviceWithCloud } from "./sync/registerDevice.js";
 
-let workerStarted = false;
+/** Background sync: every 5 minutes when online; idle skips if recently synced. */
+const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 function customMacTitlebar(): boolean {
   return (
@@ -40,16 +47,23 @@ export function App() {
   const calendarDetailPanelOpen = useApp((s) => s.calendarDetailPanelOpen);
 
   useEffect(() => {
-    if (workerStarted) return;
-    workerStarted = true;
     void getDb(); // ensure migrations run on first paint
     const worker = new SyncWorker({
       db: desktopSyncDb,
       transport: desktopTransport,
-      intervalMs: 8000,
+      intervalMs: SYNC_INTERVAL_MS,
       onStatusChange: (s) => setSyncStatus(s),
       onLog: (m) => console.log("[sync]", m),
+      afterReachable: registerDeviceWithCloud,
+      shouldSkipScheduledSync: async () => {
+        const meta = await getCloudSyncMeta();
+        if (meta.pendingOutbox > 0) return false;
+        const anchor = meta.lastActivityAt;
+        if (!anchor) return false;
+        return Date.now() - new Date(anchor).getTime() < SYNC_INTERVAL_MS;
+      },
     });
+    registerDesktopSyncWorker(worker);
     worker.start();
 
     const pollSidecar = async (): Promise<void> => {
@@ -65,6 +79,7 @@ export function App() {
 
     return () => {
       worker.stop();
+      unregisterDesktopSyncWorker();
       clearInterval(poll);
     };
   }, [setSyncStatus, setSidecar]);

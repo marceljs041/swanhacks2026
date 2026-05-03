@@ -1,10 +1,30 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _discover_env_files() -> tuple[str, ...] | None:
+    """Resolve `.env` paths from this file — independent of uvicorn cwd."""
+    here = Path(__file__).resolve()
+    # …/repo/apps/api/app/config.py
+    repo_root = here.parents[3]
+    api_home = here.parents[1]
+    paths = [p for p in (repo_root / ".env", api_home / ".env") if p.is_file()]
+    return tuple(str(p) for p in paths) if paths else None
+
+
+_env_files = _discover_env_files()
+_model_config_kwargs: dict = {
+    "env_file_encoding": "utf-8",
+    "extra": "ignore",
+}
+if _env_files:
+    _model_config_kwargs["env_file"] = _env_files
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(**_model_config_kwargs)
 
     supabase_url: str = ""
     supabase_anon_key: str = ""

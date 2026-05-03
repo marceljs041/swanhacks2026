@@ -20,6 +20,7 @@ import {
   upsertQuizQuestion,
   upsertStudyPlan,
   upsertStudyTask,
+  saveQuizSession,
 } from "../db/repositories.js";
 import {
   upsertEvent as upsertCalendarEvent,
@@ -60,6 +61,10 @@ export const desktopSyncDb: SyncDb = {
     if (env.operation === "delete") {
       const db = await getDb();
       const ts = nowIso();
+      if (env.entity_type === "quiz_sessions") {
+        db.prepare("delete from quiz_sessions where quiz_id = ?").run(env.entity_id);
+        return "applied";
+      }
       db.prepare(
         `update ${env.entity_type} set deleted_at = ?, updated_at = ? where id = ?`,
       ).run(ts, ts, env.entity_id);
@@ -85,6 +90,23 @@ export const desktopSyncDb: SyncDb = {
       case "quiz_questions":
         await upsertQuizQuestion(p as any, skipOutbox);
         return "applied";
+      case "quiz_sessions": {
+        const raw = p.answers_json;
+        const answers =
+          typeof raw === "string"
+            ? (JSON.parse(raw || "{}") as Record<string, string>)
+            : ((raw as Record<string, string>) ?? {});
+        await saveQuizSession(
+          {
+            quiz_id: (p.quiz_id as string) ?? env.entity_id,
+            current_index: Number(p.current_index ?? 0),
+            answers,
+            started_at: p.started_at as string | undefined,
+          },
+          skipOutbox,
+        );
+        return "applied";
+      }
       case "study_plans":
         await upsertStudyPlan(p as any, skipOutbox);
         return "applied";
@@ -106,9 +128,12 @@ export const desktopSyncDb: SyncDb = {
 export const desktopTransport = {
   async ping() {
     try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2000);
       const res = await fetch(`${CLOUD_API_BASE_URL}/health`, {
-        signal: AbortSignal.timeout(2000),
+        signal: ctrl.signal,
       });
+      clearTimeout(timer);
       return res.ok;
     } catch {
       return false;

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CLOUD_API_BASE_URL } from "@studynest/shared";
 import { themes, type ThemeName } from "@studynest/ui";
 import { useApp } from "../store.js";
-import { setUserId } from "../db/client.js";
+import { getDeviceId, setUserId } from "../db/client.js";
 import { Card } from "./ui/Card.js";
 import { Placeholder } from "./ui/Placeholder.js";
 import { CheckIcon, SettingsIcon } from "./icons.js";
@@ -26,7 +26,7 @@ export const Settings: FC = () => {
   }
 
   async function confirmPair(): Promise<void> {
-    const deviceId = (await window.studynest.sidecarBaseUrl()) ?? "desktop";
+    const deviceId = await getDeviceId();
     const res = await fetch(`${CLOUD_API_BASE_URL}/devices/pair/confirm`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -24,6 +24,7 @@ import {
   ulid,
 } from "@studynest/shared";
 import type { SyncableEntity } from "@studynest/db-schema";
+import { maxIso } from "../lib/relativeTime.js";
 import { getDb, getDeviceId } from "./client.js";
 
 interface WriteOpts {
@@ -699,6 +700,84 @@ export async function unsyncedNotesCount(): Promise<number> {
     )
     .get() as { c: number };
   return row.c;
+}
+
+/**
+ * Cloud sync progress for the sidebar: combine pull cursor, last successful
+ * upload, and outbox backpressure. `lastActivityAt` is the more recent of pull
+ * vs push so “just now” reflects a real round-trip, not only an empty pull.
+ *
+ * Also includes the most recent outbox error so the UI can show why uploads
+ * are stuck instead of just a count.
+ */
+export async function getCloudSyncMeta(): Promise<{
+  lastPulledAt: string | null;
+  lastPushedAt: string | null;
+  lastActivityAt: string | null;
+  pendingOutbox: number;
+  lastOutboxError: { entity_type: string; reason: string } | null;
+}> {
+  const db = await getDb();
+  const row = db
+    .prepare(
+      "select last_pulled_at, last_pushed_at from sync_state where id = 1",
+    )
+    .get() as
+    | { last_pulled_at: string | null; last_pushed_at: string | null }
+    | undefined;
+  const pending = db
+    .prepare(
+      "select count(*) as c from sync_outbox where synced_at is null",
+    )
+    .get() as { c: number };
+  const errRow = db
+    .prepare(
+      `select entity_type, last_error from sync_outbox
+       where synced_at is null and last_error is not null
+       order by retry_count desc, created_at desc limit 1`,
+    )
+    .get() as { entity_type: string; last_error: string } | undefined;
+  const lastPulledAt = row?.last_pulled_at ?? null;
+  const lastPushedAt = row?.last_pushed_at ?? null;
+  return {
+    lastPulledAt,
+    lastPushedAt,
+    lastActivityAt: maxIso(lastPulledAt, lastPushedAt),
+    pendingOutbox: pending.c,
+    lastOutboxError: errRow
+      ? { entity_type: errRow.entity_type, reason: errRow.last_error }
+      : null,
+  };
+}
+
+/** Outbox rows that have failed at least once; surfaced in Settings/diagnostics. */
+export async function listOutboxErrors(limit = 20): Promise<
+  Array<{
+    id: string;
+    entity_type: string;
+    entity_id: string;
+    retry_count: number;
+    last_error: string;
+    created_at: string;
+  }>
+> {
+  const db = await getDb();
+  return db
+    .prepare(
+      `select id, entity_type, entity_id, retry_count, last_error, created_at
+       from sync_outbox
+       where synced_at is null and last_error is not null
+       order by retry_count desc, created_at desc
+       limit ?`,
+    )
+    .all(limit) as Array<{
+    id: string;
+    entity_type: string;
+    entity_id: string;
+    retry_count: number;
+    last_error: string;
+    created_at: string;
+  }>;
 }
 
 /**
@@ -2122,8 +2201,12 @@ export async function markOutboxSynced(ids: string[]): Promise<void> {
   const db = await getDb();
   const ts = nowIso();
   const stmt = db.prepare("update sync_outbox set synced_at = ? where id = ?");
+  const pushState = db.prepare(
+    "update sync_state set last_pushed_at = ? where id = 1",
+  );
   const tx = db.transaction((arr: string[]) => {
     for (const id of arr) stmt.run(ts, id);
+    pushState.run(ts);
   });
   tx(ids);
 }
@@ -2133,6 +2216,246 @@ export async function recordOutboxFailure(id: string, error: string): Promise<vo
   db.prepare(
     "update sync_outbox set retry_count = retry_count + 1, last_error = ? where id = ?",
   ).run(error, id);
+}
+
+/**
+ * Clears `last_error` and resets `retry_count` so failed rows are retried as
+ * if fresh — useful after the cloud schema is fixed and we want sync to
+ * re-attempt previously stuck pushes immediately.
+ */
+export async function resetOutboxErrors(): Promise<number> {
+  const db = await getDb();
+  const before = (
+    db
+      .prepare("select count(*) as c from sync_outbox where synced_at is null and last_error is not null")
+      .get() as { c: number }
+  ).c;
+  db.prepare(
+    `update sync_outbox set retry_count = 0, last_error = null
+     where synced_at is null and last_error is not null`,
+  ).run();
+  return before;
+}
+
+/**
+ * Re-enqueues every existing local row into `sync_outbox` so the next push
+ * uploads them. Used when the outbox got out of sync with reality (e.g. rows
+ * created via `skipOutbox`, dev tooling, or a previous app version that
+ * marked things synced incorrectly).
+ *
+ * Strategy: delete any pending (un-synced) outbox row whose `(entity_type,
+ * entity_id)` matches a live local row, then insert a fresh "upsert"
+ * envelope per live row. Already-synced outbox history is left intact.
+ */
+export async function reenqueueAllLocalRows(): Promise<number> {
+  const db = await getDb();
+  const ts = nowIso();
+  let total = 0;
+
+  type FkSpec = {
+    /** Column on this table that points at a parent row. */
+    column: string;
+    /** Name of the parent entity (must be a SPEC table iterated above). */
+    parentTable: string;
+    /** Whether the FK column may be null/empty on this table. */
+    nullable: boolean;
+  };
+
+  type EntitySpec = {
+    entity_type: SyncableEntity;
+    table: string;
+    pk: string;
+    /**
+     * Required FK relationships. If a row's FK column doesn't resolve to a
+     * live row in `parentTable` and isn't nullable, the row is treated as
+     * an orphan and skipped (not enqueued; any pending outbox row removed).
+     */
+    fks?: FkSpec[];
+  };
+
+  // Order matters for FK safety on the cloud. Mirrors APPLY_ORDER.
+  // We intentionally include soft-deleted rows: Postgres FKs don't care
+  // about `deleted_at`, and a child row (e.g. flashcard_set) may still
+  // point at a soft-deleted parent (note). The cloud stores the parent
+  // as a soft-deleted record and the FK is satisfied.
+  const SPECS: EntitySpec[] = [
+    { entity_type: "classes", table: "classes", pk: "id" },
+    {
+      entity_type: "notes",
+      table: "notes",
+      pk: "id",
+      fks: [{ column: "class_id", parentTable: "classes", nullable: true }],
+    },
+    {
+      entity_type: "attachments",
+      table: "attachments",
+      pk: "id",
+      fks: [{ column: "note_id", parentTable: "notes", nullable: true }],
+    },
+    {
+      entity_type: "flashcard_sets",
+      table: "flashcard_sets",
+      pk: "id",
+      fks: [{ column: "note_id", parentTable: "notes", nullable: false }],
+    },
+    {
+      entity_type: "flashcards",
+      table: "flashcards",
+      pk: "id",
+      fks: [
+        { column: "set_id", parentTable: "flashcard_sets", nullable: false },
+      ],
+    },
+    {
+      entity_type: "quizzes",
+      table: "quizzes",
+      pk: "id",
+      fks: [{ column: "note_id", parentTable: "notes", nullable: false }],
+    },
+    {
+      entity_type: "quiz_questions",
+      table: "quiz_questions",
+      pk: "id",
+      fks: [{ column: "quiz_id", parentTable: "quizzes", nullable: false }],
+    },
+    {
+      entity_type: "quiz_attempts",
+      table: "quiz_attempts",
+      pk: "id",
+      fks: [{ column: "quiz_id", parentTable: "quizzes", nullable: false }],
+    },
+    {
+      entity_type: "quiz_sessions",
+      table: "quiz_sessions",
+      pk: "quiz_id",
+      fks: [{ column: "quiz_id", parentTable: "quizzes", nullable: false }],
+    },
+    { entity_type: "study_plans", table: "study_plans", pk: "id" },
+    {
+      entity_type: "study_tasks",
+      table: "study_tasks",
+      pk: "id",
+      fks: [
+        { column: "plan_id", parentTable: "study_plans", nullable: true },
+        { column: "note_id", parentTable: "notes", nullable: true },
+      ],
+    },
+    {
+      entity_type: "calendar_events",
+      table: "calendar_events",
+      pk: "id",
+      fks: [{ column: "class_id", parentTable: "classes", nullable: true }],
+    },
+    {
+      entity_type: "checklist_items",
+      table: "checklist_items",
+      pk: "id",
+      fks: [
+        {
+          column: "event_id",
+          parentTable: "calendar_events",
+          nullable: false,
+        },
+      ],
+    },
+    { entity_type: "xp_events", table: "xp_events", pk: "id" },
+  ];
+
+  // Pre-load every parent table's IDs so FK checks are O(1) lookups.
+  // Includes soft-deleted rows on purpose: those parents will be uploaded
+  // by an earlier SPEC iteration so the cloud row exists.
+  const liveIds: Record<string, Set<string>> = {};
+  for (const spec of SPECS) {
+    try {
+      const rows = db
+        .prepare(`select ${spec.pk} as id from ${spec.table}`)
+        .all() as Array<{ id: unknown }>;
+      liveIds[spec.table] = new Set(
+        rows.map((r) => String(r.id ?? "")).filter(Boolean),
+      );
+    } catch {
+      liveIds[spec.table] = new Set();
+    }
+  }
+
+  const insertOutbox = db.prepare(
+    `insert into sync_outbox (
+       id, entity_type, entity_id, operation, payload_json,
+       client_updated_at, created_at, retry_count
+     ) values (?, ?, ?, 'upsert', ?, ?, ?, 0)`,
+  );
+  const deletePending = db.prepare(
+    `delete from sync_outbox
+     where entity_type = ? and entity_id = ? and synced_at is null`,
+  );
+
+  let orphansSkipped = 0;
+
+  for (const spec of SPECS) {
+    let exists = true;
+    try {
+      db.prepare(`select 1 from ${spec.table} limit 0`).all();
+    } catch {
+      exists = false; // table missing on this device (older schema)
+    }
+    if (!exists) continue;
+
+    const rows = db
+      .prepare(`select * from ${spec.table}`)
+      .all() as Array<Record<string, unknown>>;
+
+    const tx = db.transaction((batch: Array<Record<string, unknown>>) => {
+      for (const row of batch) {
+        const id = String(row[spec.pk] ?? "");
+        if (!id) continue;
+
+        // Skip dangling rows whose required FK doesn't resolve locally —
+        // pushing them would just reproduce the FK violation on Supabase.
+        let orphan = false;
+        for (const fk of spec.fks ?? []) {
+          const raw = row[fk.column];
+          const fkVal =
+            raw === null || raw === undefined || raw === "" ? null : String(raw);
+          if (fkVal === null) {
+            if (!fk.nullable) {
+              orphan = true;
+              break;
+            }
+            continue;
+          }
+          if (!liveIds[fk.parentTable]?.has(fkVal)) {
+            orphan = true;
+            break;
+          }
+        }
+        if (orphan) {
+          // Drop any stale envelope so it stops blocking sync status.
+          deletePending.run(spec.entity_type, id);
+          orphansSkipped += 1;
+          continue;
+        }
+
+        deletePending.run(spec.entity_type, id);
+        insertOutbox.run(
+          `obx_${spec.entity_type}_${id}_${ts}_${total + 1}`,
+          spec.entity_type,
+          id,
+          JSON.stringify(row),
+          ts,
+          ts,
+        );
+        total += 1;
+      }
+    });
+    if (rows.length) tx(rows);
+  }
+
+  if (orphansSkipped > 0) {
+    console.warn(
+      `[sync] skipped ${orphansSkipped} orphaned local rows (missing parent FK)`,
+    );
+  }
+  return total;
 }
 
 void getDeviceId; // re-export for the sync adapter

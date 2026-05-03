@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "uvicorn app.main:app --reload --port 8000",
+    "dev": "node scripts/dev.mjs",
     "sidecar": "python -m local_sidecar.main",
     "build": "echo 'python — nothing to build'",
     "lint": "ruff check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0"
   }
 }

@@ -1,12 +1,20 @@
 import type { FC, ReactNode } from "react";
-import { useEffect } from "react";
-import { listClasses } from "../db/repositories.js";
+import { useCallback, useEffect, useState } from "react";
+import {
+  getCloudSyncMeta,
+  listClasses,
+  reenqueueAllLocalRows,
+  resetOutboxErrors,
+} from "../db/repositories.js";
+import { describeAgo } from "../lib/relativeTime.js";
+import { requestDesktopSync } from "../sync/controller.js";
 import { useApp, type View } from "../store.js";
 import { BRAND_LOGO_URL } from "../lib/brand.js";
 import {
   CalendarIcon,
   ClassIcon,
   FlashcardIcon,
+  GlobeIcon,
   HomeIcon,
   NoteIcon,
   QuizIcon,
@@ -53,10 +61,59 @@ export const Sidebar: FC = () => {
   const view = useApp((s) => s.view);
   const setView = useApp((s) => s.setView);
   const setClasses = useApp((s) => s.setClasses);
+  const syncStatus = useApp((s) => s.syncStatus);
+  const [syncMeta, setSyncMeta] = useState<{
+    lastPulledAt: string | null;
+    lastPushedAt: string | null;
+    lastActivityAt: string | null;
+    pendingOutbox: number;
+    lastOutboxError: { entity_type: string; reason: string } | null;
+  }>({
+    lastPulledAt: null,
+    lastPushedAt: null,
+    lastActivityAt: null,
+    pendingOutbox: 0,
+    lastOutboxError: null,
+  });
+  /** Bumps every minute so relative “ago” text stays accurate without polling SQLite. */
+  const [relativeTick, setRelativeTick] = useState(0);
+
+  const refreshLastSynced = useCallback(async () => {
+    const m = await getCloudSyncMeta();
+    setSyncMeta(m);
+  }, []);
 
   useEffect(() => {
     void listClasses().then(setClasses);
   }, [setClasses]);
+
+  useEffect(() => {
+    void refreshLastSynced();
+  }, [refreshLastSynced, syncStatus]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => setRelativeTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const syncing = syncStatus === "syncing" || syncStatus === "saving";
+  const { lastActivityAt, pendingOutbox, lastOutboxError } = syncMeta;
+
+  let subLine: string;
+  if (syncing) subLine = "Syncing…";
+  else if (pendingOutbox > 0) {
+    const pend =
+      pendingOutbox === 1
+        ? "1 change stuck"
+        : `${pendingOutbox} changes stuck`;
+    subLine = lastActivityAt ? `${pend} · ${describeAgo(lastActivityAt)}` : pend;
+  } else if (!lastActivityAt) subLine = "Not yet";
+  else subLine = describeAgo(lastActivityAt);
+
+  const errorTooltip =
+    pendingOutbox > 0 && lastOutboxError
+      ? ` Last error on ${lastOutboxError.entity_type}: ${lastOutboxError.reason}.`
+      : "";
 
   return (
     <aside className="sidebar">
@@ -89,6 +146,84 @@ export const Sidebar: FC = () => {
       <div className="sidebar-spacer" />
 
       <nav className="sidebar-nav sidebar-nav-bottom">
+        <button
+          type="button"
+          className="nav-item nav-item-sync"
+          data-sync-tick={relativeTick}
+          onClick={() => {
+            void (async () => {
+              // IMPORTANT: snapshot meta BEFORE resetting errors, otherwise
+              // `lastOutboxError` is wiped by `resetOutboxErrors()` and we
+              // can't tell that the previous push had FK failures.
+              const SEED_FLAG = "studynest:outbox-backfilled-v1";
+              const lsAvailable = typeof localStorage !== "undefined";
+              const beforeMeta = await getCloudSyncMeta();
+              const neverBackfilled =
+                lsAvailable && !localStorage.getItem(SEED_FLAG);
+              const hadOutboxError = beforeMeta.lastOutboxError !== null;
+
+              // Clear retry counters so previously stuck rows get a fresh
+              // attempt after schema fixes / connectivity changes.
+              await resetOutboxErrors();
+
+              // Reseed when:
+              //  - outbox is empty AND we've never backfilled on this device
+              //    (covers seeded data / pre-outbox writes that need to go
+              //    up); OR
+              //  - the previous push left errors (FK failures, schema drift,
+              //    etc.) — re-enqueueing all rows in FK order fixes those,
+              //    and the reseed prunes orphan children whose required FK
+              //    doesn't resolve locally so they stop blocking sync.
+              const shouldReseed =
+                (beforeMeta.pendingOutbox === 0 && neverBackfilled) ||
+                hadOutboxError;
+              if (shouldReseed) {
+                const queued = await reenqueueAllLocalRows();
+                console.log(
+                  `[sync] backfill reseed queued ${queued} rows ` +
+                    `(pending was ${beforeMeta.pendingOutbox}, ` +
+                    `hadError=${hadOutboxError})`,
+                );
+                if (lsAvailable) {
+                  localStorage.setItem(SEED_FLAG, new Date().toISOString());
+                }
+              }
+              await requestDesktopSync();
+              await refreshLastSynced();
+            })();
+          }}
+          disabled={syncing}
+          title={
+            syncing
+              ? "Sync in progress"
+              : pendingOutbox > 0
+                ? `${pendingOutbox} change${
+                    pendingOutbox === 1 ? "" : "s"
+                  } waiting to upload.${errorTooltip}`
+                : lastActivityAt
+                  ? `Last cloud activity ${describeAgo(lastActivityAt)}.`
+                  : "No successful cloud sync yet."
+          }
+          aria-label={
+            syncing
+              ? "Sync in progress"
+              : pendingOutbox > 0
+                ? `Sync now. ${pendingOutbox} change${
+                    pendingOutbox === 1 ? "" : "s"
+                  } waiting to upload.${errorTooltip}`
+                : lastActivityAt
+                  ? `Sync now. Last cloud activity ${describeAgo(lastActivityAt)}.`
+                  : "Sync now. No successful cloud sync yet."
+          }
+        >
+          <span className="nav-icon">
+            <GlobeIcon />
+          </span>
+          <span className="nav-sync-stack">
+            <span className="nav-sync-line">Cloud sync</span>
+            <span className="nav-sync-sub">{subLine}</span>
+          </span>
+        </button>
         <button
           key={SETTINGS_ITEM.key}
           type="button"

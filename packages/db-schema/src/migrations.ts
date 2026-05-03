@@ -117,6 +117,14 @@ export const MIGRATIONS: Migration[] = [
       create index if not exists idx_checklist_items_event_id on checklist_items(event_id) where deleted_at is null;
     `,
   },
+  {
+    version: 24,
+    name: "sync_state_last_pushed_at",
+    sql: /* sql */ `
+      alter table sync_state add column last_pushed_at text;
+    `,
+    idempotentAddColumn: true,
+  },
 ];
 
 /**

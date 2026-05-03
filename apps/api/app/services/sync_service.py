@@ -37,12 +37,27 @@ SYNCABLE_TABLES = (
     "quizzes",
     "quiz_questions",
     "quiz_attempts",
+    "quiz_sessions",
     "study_plans",
     "study_tasks",
     "calendar_events",
     "checklist_items",
     "xp_events",
 )
+
+# Primary key column per table (default "id"). Must match client envelopes / Postgres.
+def _pk_field(entity_type: str) -> str:
+    if entity_type == "quiz_sessions":
+        return "quiz_id"
+    return "id"
+
+
+def _entity_id_from_row(table: str, row: dict[str, Any]) -> str:
+    pk = _pk_field(table)
+    val = row.get(pk) or row.get("id")
+    if val is None:
+        raise ValueError(f"sync pull row missing pk for {table}: {row!r}")
+    return str(val)
 
 # Tables that should never reject a stale write — append-only or merge-by-id.
 NEVER_CONFLICT = {"xp_events", "quiz_attempts"}
@@ -74,15 +89,22 @@ def push(req: SyncPushRequest) -> SyncPushResponse:
             )
             continue
 
+        pk = _pk_field(env.entity_type)
         existing = None
         try:
             rows = sb.query_since(env.entity_type, user_id, since=None)
-            existing = next((r for r in rows if r.get("id") == env.entity_id), None)
+            existing = next(
+                (r for r in rows if r.get(pk) == env.entity_id or r.get("id") == env.entity_id),
+                None,
+            )
         except Exception:
             existing = None
 
         if env.operation == "delete":
-            sb.soft_delete(env.entity_type, env.entity_id, user_id)
+            if env.entity_type == "quiz_sessions":
+                sb.hard_delete(env.entity_type, pk, env.entity_id, user_id)
+            else:
+                sb.soft_delete(env.entity_type, env.entity_id, user_id)
             applied.append(
                 AppliedItem(
                     entity_type=env.entity_type,
@@ -110,13 +132,28 @@ def push(req: SyncPushRequest) -> SyncPushResponse:
             )
             continue
 
+        payload = dict(env.payload)
+        payload[pk] = env.entity_id
+        if pk != "id":
+            payload.pop("id", None)
         row: dict[str, Any] = {
-            **env.payload,
-            "id": env.entity_id,
+            **payload,
             "user_id": user_id,
             "device_id": env.device_id,
         }
-        sb.upsert(env.entity_type, row)
+        try:
+            sb.upsert(env.entity_type, row, pk=pk)
+        except Exception as exc:
+            msg = str(exc)[:400]
+            conflicts.append(
+                ConflictItem(
+                    entity_type=env.entity_type,
+                    entity_id=env.entity_id,
+                    reason=f"upsert_failed:{msg}",
+                    server_payload={},
+                )
+            )
+            continue
         applied.append(
             AppliedItem(
                 entity_type=env.entity_type,
@@ -147,7 +184,7 @@ def pull(req: SyncPullRequest) -> SyncPullResponse:
             envelopes.append(
                 SyncEnvelope(
                     entity_type=table,
-                    entity_id=row["id"],
+                    entity_id=_entity_id_from_row(table, row),
                     operation=operation,
                     payload=row,
                     client_updated_at=row.get("updated_at") or _now_iso(),

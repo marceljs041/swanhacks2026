@@ -16,6 +16,7 @@ import {
 } from "react";
 import { ai } from "../lib/ai.js";
 import { BRAND_AI_URL } from "../lib/brand.js";
+import { describeAgo } from "../lib/relativeTime.js";
 import {
   NOTE_ICON_LIST,
   NoteGlyph,
@@ -3673,16 +3674,6 @@ const SyncFooter: FC<{ status: SyncStatus; updatedAt: string }> = ({
     </div>
   );
 };
-
-function describeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "just now";
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 /* ====================================================================
  * Insights / linking helpers

@@ -58,12 +58,25 @@ export interface SyncWorkerOptions {
   intervalMs?: number;
   onStatusChange?: (status: SyncStatus) => void;
   onLog?: (msg: string, meta?: unknown) => void;
+  /**
+   * Called right after a successful `ping` (API reachable) and before push/pull.
+   * Use to register the device with the cloud when the user was offline-first.
+   */
+  afterReachable?: () => void | Promise<void>;
+  /**
+   * When true, skip this **scheduled** tick (manual `syncNow` ignores this).
+   * Use to avoid polling when there are no local writes and the client recently
+   * completed a pull (within the same window as `intervalMs`).
+   */
+  shouldSkipScheduledSync?: () => boolean | Promise<boolean>;
 }
 
 export class SyncWorker {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
   private status: SyncStatus = "offline";
+  /** Set inside a tick when push returned conflicts so we don't end as "synced". */
+  private pushHadConflicts = false;
 
   constructor(private readonly opts: SyncWorkerOptions) {}
 
@@ -101,15 +114,28 @@ export class SyncWorker {
     if (this.running && !force) return;
     this.running = true;
     try {
+      if (!force) {
+        const skip = await this.opts.shouldSkipScheduledSync?.();
+        if (skip) {
+          this.log("scheduled sync skipped (idle / recently synced)");
+          return;
+        }
+      }
       const reachable = await this.opts.transport.ping().catch(() => false);
       if (!reachable) {
         this.setStatus("offline");
         return;
       }
+      try {
+        await this.opts.afterReachable?.();
+      } catch (e) {
+        this.log("afterReachable failed", e);
+      }
       this.setStatus("syncing");
+      this.pushHadConflicts = false;
       await this.pushOnce();
       await this.pullOnce();
-      this.setStatus("synced");
+      this.setStatus(this.pushHadConflicts ? "conflict" : "synced");
     } catch (err) {
       this.log("sync error", err);
       this.setStatus("error");
@@ -121,9 +147,16 @@ export class SyncWorker {
   private async pushOnce(): Promise<void> {
     const batch = await this.opts.db.listOutbox(this.opts.batchSize ?? 100);
     if (batch.length === 0) return;
+    const pushOrder = (t: string) => {
+      const i = APPLY_ORDER.indexOf(t as SyncableEntity);
+      return i === -1 ? 10_000 : i;
+    };
+    const sorted = [...batch].sort(
+      (a, b) => pushOrder(a.entity_type) - pushOrder(b.entity_type),
+    );
     const device_id = await this.opts.db.getDeviceId();
     const user_id = await this.opts.db.getUserId();
-    const envelopes: SyncEnvelope[] = batch.map((row) => ({
+    const envelopes: SyncEnvelope[] = sorted.map((row) => ({
       entity_type: row.entity_type,
       entity_id: row.entity_id,
       operation: row.operation,
@@ -135,17 +168,28 @@ export class SyncWorker {
     const appliedKeys = new Set(
       res.applied.map((a) => `${a.entity_type}:${a.entity_id}`),
     );
-    const okIds = batch
+    const okIds = sorted
       .filter((r) => appliedKeys.has(`${r.entity_type}:${r.entity_id}`))
       .map((r) => r.id);
     if (okIds.length) await this.opts.db.markSynced(okIds);
     for (const c of res.conflicts) {
-      const failed = batch.find(
+      const failed = sorted.find(
         (r) => r.entity_type === c.entity_type && r.entity_id === c.entity_id,
       );
       if (failed) await this.opts.db.recordOutboxFailure(failed.id, c.reason);
     }
-    this.log(`pushed ${okIds.length}/${batch.length}`);
+    if (res.conflicts.length) {
+      this.pushHadConflicts = true;
+      this.log(
+        `push conflicts: ${res.conflicts.length}`,
+        res.conflicts.map((c) => ({
+          type: c.entity_type,
+          id: c.entity_id,
+          reason: c.reason,
+        })),
+      );
+    }
+    this.log(`pushed ${okIds.length}/${sorted.length}`);
   }
 
   private async pullOnce(): Promise<void> {

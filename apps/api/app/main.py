@@ -26,10 +26,20 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, object]:
     sb = get_supabase()
+    configured = not sb.using_memory
     return {
         "ok": True,
         "service": "studynest-api",
-        "supabase": "configured" if not sb.using_memory else "memory_fallback",
+        "supabase": "configured" if configured else "memory_fallback",
+        "hint": None
+        if configured
+        else (
+            "Sync is using in-memory storage — Postgres/Supabase stay empty. "
+            "Set SUPABASE_URL and SUPABASE_SERVICE_KEY (e.g. from the repo root .env) and restart the API."
+        ),
+        # Lists columns the API has had to drop because Postgres is missing
+        # them (older migration). Shown so users know which migrations to run.
+        "schema_drift": sb.get_missing_columns(),
     }
 
 

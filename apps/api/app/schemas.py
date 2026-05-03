@@ -181,3 +181,16 @@ class PairConfirmRequest(BaseModel):
 class PairConfirmResponse(BaseModel):
     user_id: str
     paired_device_id: str
+
+
+class DeviceRegisterRequest(BaseModel):
+    """Upserts `devices` when an offline-first client comes online."""
+
+    device_id: str
+    user_id: str | None = None
+    label: str | None = None
+
+
+class DeviceRegisterResponse(BaseModel):
+    ok: bool = True
+    resolved_user_id: str

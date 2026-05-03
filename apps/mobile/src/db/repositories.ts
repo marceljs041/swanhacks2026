@@ -310,6 +310,7 @@ export async function markOutboxSynced(ids: string[]): Promise<void> {
   for (const id of ids) {
     await db.runAsync("update sync_outbox set synced_at = ? where id = ?", [ts, id]);
   }
+  await db.runAsync("update sync_state set last_pushed_at = ? where id = 1", [ts]);
 }
 
 export async function recordOutboxFailure(id: string, error: string): Promise<void> {

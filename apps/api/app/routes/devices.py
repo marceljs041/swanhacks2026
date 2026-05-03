@@ -5,9 +5,25 @@ from threading import RLock
 from fastapi import APIRouter, HTTPException
 
 from app.config import get_settings
-from app.schemas import PairConfirmRequest, PairConfirmResponse, PairStartResponse
+from app.schemas import (
+    DeviceRegisterRequest,
+    DeviceRegisterResponse,
+    PairConfirmRequest,
+    PairConfirmResponse,
+    PairStartResponse,
+)
+from app.services.supabase_service import get_supabase
 
 router = APIRouter(prefix="/devices", tags=["devices"])
+
+
+@router.post("/register", response_model=DeviceRegisterResponse)
+def post_register(req: DeviceRegisterRequest) -> DeviceRegisterResponse:
+    """Called when a client comes online so `devices` gets a row (offline-first UX)."""
+    settings = get_settings()
+    resolved_user_id = req.user_id or settings.demo_user_id
+    get_supabase().register_device(req.device_id, resolved_user_id, req.label)
+    return DeviceRegisterResponse(resolved_user_id=resolved_user_id)
 
 # In-memory pairing table (good enough for the demo). Each code maps to a
 # user_id and originating device. Confirming consumes the code.
