@@ -9281,7 +9281,7 @@ button.class-card {
 .qz-deck-card:hover {
   border-color: var(--color-borderStrong);
   box-shadow: var(--shadowMd);
-  transform: translateY(-1px);
+  transform: none;
 }
 .qz-deck-card.active {
   border-color: var(--color-primary);
@@ -9308,6 +9308,54 @@ button.class-card {
 .qz-deck-icon.tone-amber { background: var(--color-accentAmberSoft); color: var(--color-accentAmber); }
 .qz-deck-icon.tone-peach { background: var(--color-accentPeachSoft); color: var(--color-accentPeach); }
 .qz-deck-more { display: inline-flex; }
+.qz-queue-panel {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: var(--shadowSm);
+}
+.qz-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.qz-queue-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.qz-queue-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-textMuted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.qz-queue-active {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.qz-queue-list {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.qz-queue-list li {
+  font-size: 12px;
+  color: var(--color-textMuted);
+}
+.qz-queue-order {
+  display: inline-block;
+  min-width: 20px;
+  color: var(--color-textSubtle);
+}
 .qz-deck-title {
   font-size: 16px;
   font-weight: 700;

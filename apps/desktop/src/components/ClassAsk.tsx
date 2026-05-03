@@ -10,6 +10,7 @@ import type {
 import { XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
 import { BRAND_ASKAI_HERO_URL } from "../lib/brand.js";
+import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
 import {
   deriveSubtitle,
   progressLabel,
@@ -492,32 +493,34 @@ export const ClassAsk: FC<ClassAskProps> = ({ classId }) => {
       if (!cls) return;
       setActionBusy(`qz-${msg.id}`);
       try {
-        const note = await upsertNote({
-          title: `${cls.name} · AI answer`,
-          content_markdown: msg.content,
-          class_id: classId,
-        });
-        const res = await ai.quiz({
-          note_id: note.id,
-          title: note.title,
-          content: msg.content,
-          count: 5,
-        });
-        const quiz = await upsertQuiz({
-          title: `${cls.name} · chat quiz`,
-          note_id: note.id,
-        });
-        for (const q of res.questions) {
-          await upsertQuizQuestion({
-            quiz_id: quiz.id,
-            type: q.type,
-            question: q.question,
-            options_json:
-              q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
-            correct_answer: String(q.answer),
-            explanation: q.explanation ?? null,
+        await enqueueQuizGeneration(`Ask AI quiz: ${cls.name}`, async () => {
+          const note = await upsertNote({
+            title: `${cls.name} · AI answer`,
+            content_markdown: msg.content,
+            class_id: classId,
           });
-        }
+          const res = await ai.quiz({
+            note_id: note.id,
+            title: note.title,
+            content: msg.content,
+            count: 5,
+          });
+          const quiz = await upsertQuiz({
+            title: `${cls.name} · chat quiz`,
+            note_id: note.id,
+          });
+          for (const q of res.questions) {
+            await upsertQuizQuestion({
+              quiz_id: quiz.id,
+              type: q.type,
+              question: q.question,
+              options_json:
+                q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
+              correct_answer: String(q.answer),
+              explanation: q.explanation ?? null,
+            });
+          }
+        });
         setToast(`Quiz ready in ${cls.name}.`);
       } catch {
         setToast("Couldn't build a quiz from this answer.");

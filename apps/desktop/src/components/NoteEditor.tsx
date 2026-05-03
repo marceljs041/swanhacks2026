@@ -15,7 +15,11 @@ import {
   useState,
 } from "react";
 import { ai } from "../lib/ai.js";
+<<<<<<< HEAD
 import { useAudioJobs } from "../lib/audioJobs.js";
+=======
+import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
+>>>>>>> bcdfe3f9c04227a1ed23ba6d025dddc304e26240
 import { BRAND_AI_URL } from "../lib/brand.js";
 import { describeAgo } from "../lib/relativeTime.js";
 import {
@@ -150,6 +154,7 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
   const syncStatus = useApp((s) => s.syncStatus);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const markdownImportInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
   /** Latest note/title/body for debounced saves (avoids stale closures overwriting title). */
   const noteRef = useRef<NoteRow | null>(null);
@@ -363,6 +368,24 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
     e.target.value = "";
   }
 
+  async function handleMarkdownImport(e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const imported = await file.text();
+      const parsedTitle = parseLeadingH1Text(imported);
+      const nextTitle = parsedTitle ?? (stripExt(file.name) || "Untitled");
+      const nextBody = ensureLeadingTitleH1(imported, nextTitle);
+      setTitle(nextTitle);
+      setBody(nextBody);
+      editorRef.current?.setMarkdown(nextBody);
+      persistNote({ title: nextTitle, content_markdown: nextBody });
+    } catch {
+      setError("Failed to import markdown file.");
+    }
+  }
+
   function removeAttachment(id: string): void {
     setAttachments((prev) => {
       const a = prev.find((x) => x.id === id);
@@ -399,32 +422,34 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
         await recordXp("generateFlashcards", XP_RULES.generateFlashcards);
         setSets(await listFlashcardSets(noteId));
       } else if (action === "quiz") {
-        const res = await ai.quiz({ ...ctx, count: 5 });
-        const quiz = await upsertQuiz({
-          note_id: noteId,
-          class_id: note.class_id,
-          title: `${title || "Untitled"} — quiz`,
-          description: `${res.questions.length} practice questions generated from this note.`,
-          source_type: "note",
-          source_ids_json: JSON.stringify([noteId]),
-          tags_json: JSON.stringify(["Lecture", "Practice"]),
-        });
-        let position = 0;
-        for (const q of res.questions) {
-          await upsertQuizQuestion({
-            quiz_id: quiz.id,
-            type: q.type,
-            question: q.question,
-            options_json:
-              q.type === "multiple_choice"
-                ? JSON.stringify((q as any).options ?? [])
-                : null,
-            correct_answer: String((q as any).answer ?? ""),
-            explanation: (q as any).explanation ?? null,
-            source_note_id: noteId,
-            position: position++,
+        await enqueueQuizGeneration(`Note quiz: ${title || "Untitled"}`, async () => {
+          const res = await ai.quiz({ ...ctx, count: 5 });
+          const quiz = await upsertQuiz({
+            note_id: noteId,
+            class_id: note.class_id,
+            title: `${title || "Untitled"} — quiz`,
+            description: `${res.questions.length} practice questions generated from this note.`,
+            source_type: "note",
+            source_ids_json: JSON.stringify([noteId]),
+            tags_json: JSON.stringify(["Lecture", "Practice"]),
           });
-        }
+          let position = 0;
+          for (const q of res.questions) {
+            await upsertQuizQuestion({
+              quiz_id: quiz.id,
+              type: q.type,
+              question: q.question,
+              options_json:
+                q.type === "multiple_choice"
+                  ? JSON.stringify((q as any).options ?? [])
+                  : null,
+              correct_answer: String((q as any).answer ?? ""),
+              explanation: (q as any).explanation ?? null,
+              source_note_id: noteId,
+              position: position++,
+            });
+          }
+        });
         await recordXp("generateFlashcards", XP_RULES.generateFlashcards);
         setQuizzes(await listQuizzes(noteId));
       } else if (action === "studyPlan") {
@@ -521,6 +546,11 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
   const headerMenu: MoreMenuItem[] = [
     { label: "Duplicate", icon: <NoteIcon size={14} />, onClick: () => void duplicateNote() },
     { label: "Copy as markdown", icon: <UploadIcon size={14} />, onClick: () => void copyToClipboard() },
+    {
+      label: "Import .md",
+      icon: <UploadIcon size={14} />,
+      onClick: () => markdownImportInputRef.current?.click(),
+    },
     { label: "Export .md", icon: <UploadIcon size={14} />, onClick: exportMarkdown },
     {
       label: "Add to calendar",
@@ -610,6 +640,13 @@ export const NoteEditor: FC<Props> = ({ noteId }) => {
           multiple
           style={{ display: "none" }}
           onChange={handleImagePicked}
+        />
+        <input
+          ref={markdownImportInputRef}
+          type="file"
+          accept=".md,.markdown,text/markdown,text/plain"
+          style={{ display: "none" }}
+          onChange={(e) => void handleMarkdownImport(e)}
         />
 
         {attachments.length > 0 && (
@@ -1800,6 +1837,7 @@ interface EditorHandle {
   scrollToHeading: (id: string) => void;
   applyLink: (url: string | null) => void;
   getLinkHrefAtCaret: () => string | null;
+  setMarkdown: (markdown: string) => void;
   /** Keep the first H1 in the editor aligned with the note title field. */
   syncTitleHeading: (title: string) => void;
   /** Insert an inline audio player for an attachment id (uses live blob/storage URL). */
@@ -1923,6 +1961,27 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
     if (!el) return;
     onChange(htmlToMarkdown(el));
   }, [onChange]);
+  const customUndoRef = useRef<string[]>([]);
+  const customRedoRef = useRef<string[]>([]);
+  const customUndoArmedRef = useRef(false);
+
+  function captureCustomUndoSnapshot(el: HTMLElement): void {
+    const html = el.innerHTML;
+    const last = customUndoRef.current[customUndoRef.current.length - 1];
+    if (last === html) return;
+    customUndoRef.current.push(html);
+    if (customUndoRef.current.length > 100) customUndoRef.current.shift();
+    customRedoRef.current = [];
+    customUndoArmedRef.current = true;
+  }
+
+  function restoreEditorHtml(el: HTMLElement, html: string): void {
+    el.innerHTML = html;
+    normalizeBareImages(el);
+    ensureCaretInside(el);
+    flush();
+    requestAnimationFrame(() => updateSlashMenu());
+  }
 
   const updateSelectionBubble = useCallback(() => {
     const el = rootRef.current;
@@ -2179,6 +2238,7 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       const el = rootRef.current;
       if (!el) return;
       el.focus();
+      captureCustomUndoSnapshot(el);
       const restored = restoreSavedRangeIfValid(el);
       if (!restored) {
         // No remembered selection — ensure caret is in the editor for typing shortcuts.
@@ -2266,6 +2326,8 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       e.preventDefault();
       const file = item.getAsFile();
       if (!file) return;
+      const root = rootRef.current;
+      if (root) captureCustomUndoSnapshot(root);
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = String(reader.result ?? "");
@@ -2298,6 +2360,7 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       const el = rootRef.current;
       if (!el) return;
       el.focus();
+      captureCustomUndoSnapshot(el);
       restoreSavedRangeIfValid(el);
       document.execCommand("styleWithCSS", false, "true");
       const trimmed = url?.trim();
@@ -2364,6 +2427,23 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
     [flush],
   );
 
+  const setMarkdown = useCallback(
+    (markdown: string) => {
+      const el = rootRef.current;
+      if (!el) return;
+      el.innerHTML = markdownToHtml(markdown, {
+        audioById: mapFromMaybe(audioUrlByIdRef.current),
+      });
+      normalizeBareImages(el);
+      ensureCaretInside(el);
+      requestAnimationFrame(() => {
+        updateSlashMenu();
+        updateSelectionBubble();
+      });
+    },
+    [updateSelectionBubble, updateSlashMenu],
+  );
+
   const restoreSlashCaret = useCallback((el: HTMLElement) => {
     el.focus();
     const backup = slashInsertRangeRef.current;
@@ -2392,6 +2472,7 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       const el = rootRef.current;
       if (!el) return;
       restoreSlashCaret(el);
+      captureCustomUndoSnapshot(el);
       const label = (linkLabel || "Note").trim() || "Note";
       const href = `note://${noteId}`;
       const html = `<a href="${escapeAttr(href)}" class="note-internal-link">${escapeHtml(label)}</a>`;
@@ -2407,6 +2488,7 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       const el = rootRef.current;
       if (!el) return;
       restoreSlashCaret(el);
+      captureCustomUndoSnapshot(el);
       const url = audioUrlByIdRef.current.get(attachmentId) ?? "";
       const clip =
         clipSec && clipSec.end > clipSec.start
@@ -2426,6 +2508,7 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       scrollToHeading,
       applyLink,
       getLinkHrefAtCaret,
+      setMarkdown,
       syncTitleHeading,
       insertAudioLink,
       insertNoteLink,
@@ -2436,6 +2519,7 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
       scrollToHeading,
       applyLink,
       getLinkHrefAtCaret,
+      setMarkdown,
       syncTitleHeading,
       insertAudioLink,
       insertNoteLink,
@@ -2559,6 +2643,8 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
     const check = target.closest(".md-check") as HTMLElement | null;
     if (!check) return;
     e.preventDefault();
+    const root = rootRef.current;
+    if (root) captureCustomUndoSnapshot(root);
     const li = check.closest("li.md-task") as HTMLElement | null;
     if (!li) return;
     const next = li.dataset.checked === "1" ? "0" : "1";
@@ -2722,16 +2808,59 @@ const RichEditor = forwardRef<EditorHandle, RichEditorProps>(function RichEditor
         aria-label="Note body"
         aria-describedby="note-editor-a11y-desc"
         data-placeholder="Start writing your note…"
-        onInput={() => {
+        onInput={(e) => {
+          const native = e.nativeEvent as InputEvent;
+          const t = native.inputType ?? "";
+          if (t === "insertText" || t.startsWith("deleteContent")) {
+            // Let browser-native typing/deletion drive Ctrl+Z normally.
+            customUndoArmedRef.current = false;
+          }
           flush();
           requestAnimationFrame(() => {
             updateSlashMenu();
           });
         }}
+        onBeforeInput={(e) => {
+          const el = rootRef.current;
+          if (!el) return;
+          const native = e.nativeEvent as InputEvent;
+          const t = native.inputType ?? "";
+          if (
+            t.includes("Paste") ||
+            t.includes("Drop") ||
+            t.includes("Replace") ||
+            t.includes("Format")
+          ) {
+            captureCustomUndoSnapshot(el);
+          }
+        }}
         onPaste={onPaste}
         onKeyDown={(e) => {
           const el = rootRef.current;
           if (!el) return;
+          if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+            const key = e.key.toLowerCase();
+            const isUndo = key === "z" && !e.shiftKey;
+            const isRedo = key === "y" || (key === "z" && e.shiftKey);
+            if (isUndo && customUndoArmedRef.current && customUndoRef.current.length > 0) {
+              e.preventDefault();
+              const prev = customUndoRef.current.pop();
+              if (!prev) return;
+              customRedoRef.current.push(el.innerHTML);
+              restoreEditorHtml(el, prev);
+              customUndoArmedRef.current = customUndoRef.current.length > 0;
+              return;
+            }
+            if (isRedo && customRedoRef.current.length > 0) {
+              e.preventDefault();
+              const next = customRedoRef.current.pop();
+              if (!next) return;
+              customUndoRef.current.push(el.innerHTML);
+              restoreEditorHtml(el, next);
+              customUndoArmedRef.current = true;
+              return;
+            }
+          }
           const sm = slashMenuRef.current;
           if (sm && sm.options.length > 0) {
             if (e.key === "Escape") {

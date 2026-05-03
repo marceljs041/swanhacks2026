@@ -27,6 +27,7 @@ import { useApp, type ReviewMode } from "../store.js";
 import type { FlashcardRow, FlashcardSetRow, NoteRow } from "@studynest/shared";
 import { POINTS_RULES, ulid, XP_RULES } from "@studynest/shared";
 import { ai } from "../lib/ai.js";
+import { enqueueQuizGeneration } from "../lib/quizGenerationQueue.js";
 import { withViewTransition } from "../lib/viewTransition.js";
 import {
   ArrowLeftIcon,
@@ -162,45 +163,47 @@ export const DeckDetailRail: FC<Props> = ({
     if (!deck) return;
     setBusy("quiz");
     try {
-      const cards = await listFlashcards(deck.id);
-      if (cards.length === 0) {
-        setToast("Deck has no cards yet.");
-        return;
-      }
-      const text = cards.map((c) => `Q: ${c.front}\nA: ${c.back}`).join("\n\n");
-      const noteIdForAi = deck.note_id ?? deck.id;
-      const res = await ai.quiz({
-        note_id: noteIdForAi,
-        title: deck.title,
-        content: text,
-        count: Math.min(8, Math.max(3, Math.floor(cards.length / 2))),
-      });
-      const quiz = await upsertQuiz({
-        title: `${deck.title} · quiz`,
-        note_id: deck.note_id ?? null,
-        description: `Quiz generated from your “${deck.title}” deck.`,
-        source_type: "flashcards",
-        source_ids_json: JSON.stringify([deck.id]),
-        tags_json: JSON.stringify(["Deck", "Practice"]),
-      });
-      let position = 0;
-      for (const q of res.questions) {
-        await upsertQuizQuestion({
-          quiz_id: quiz.id,
-          type: q.type,
-          question: q.question,
-          options_json:
-            q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
-          correct_answer: String(q.answer),
-          explanation: q.explanation ?? null,
-          source_note_id: deck.note_id ?? null,
-          position: position++,
+      const result = await enqueueQuizGeneration(`Deck quiz: ${deck.title}`, async () => {
+        const cards = await listFlashcards(deck.id);
+        if (cards.length === 0) {
+          throw new Error("Deck has no cards yet.");
+        }
+        const text = cards.map((c) => `Q: ${c.front}\nA: ${c.back}`).join("\n\n");
+        const noteIdForAi = deck.note_id ?? deck.id;
+        const res = await ai.quiz({
+          note_id: noteIdForAi,
+          title: deck.title,
+          content: text,
+          count: Math.min(8, Math.max(3, Math.floor(cards.length / 2))),
         });
-      }
-      setToast(`Quiz ready — ${res.questions.length} questions.`);
-      setView({ kind: "quiz", quizId: quiz.id, mode: "take" });
-    } catch {
-      setToast("Couldn't generate a quiz from this deck.");
+        const quizRow = await upsertQuiz({
+          title: `${deck.title} · quiz`,
+          note_id: deck.note_id ?? null,
+          description: `Quiz generated from your “${deck.title}” deck.`,
+          source_type: "flashcards",
+          source_ids_json: JSON.stringify([deck.id]),
+          tags_json: JSON.stringify(["Deck", "Practice"]),
+        });
+        let position = 0;
+        for (const q of res.questions) {
+          await upsertQuizQuestion({
+            quiz_id: quizRow.id,
+            type: q.type,
+            question: q.question,
+            options_json:
+              q.type === "multiple_choice" ? JSON.stringify(q.options) : null,
+            correct_answer: String(q.answer),
+            explanation: q.explanation ?? null,
+            source_note_id: deck.note_id ?? null,
+            position: position++,
+          });
+        }
+        return { quiz: quizRow, questionCount: res.questions.length };
+      });
+      setToast(`Quiz ready — ${result.questionCount} questions.`);
+      setView({ kind: "quiz", quizId: result.quiz.id, mode: "take" });
+    } catch (e) {
+      setToast((e as Error).message || "Couldn't generate a quiz from this deck.");
     } finally {
       setBusy(null);
     }
