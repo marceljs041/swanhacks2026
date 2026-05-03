@@ -1,12 +1,15 @@
 {
-  "name": "@studynest/desktop",
+  "name": "@notegoat/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Note Goat — offline-first study workspace (desktop).",
+  "author": "Note Goat",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/prepare-electron-bundle.mjs",
     "build": "tsc -b && vite build && electron-builder",
+    "build:win": "pnpm run prebuild && tsc -b && vite build && electron-builder --win",
     "build:bundle": "pnpm run fetch-model && pnpm run build",
     "electron": "electron .",
     "typecheck": "tsc -b --noEmit",
@@ -26,8 +29,9 @@
     "zustand": "^4.5.4"
   },
   "build": {
-    "appId": "com.studynest.desktop",
-    "productName": "StudyNest",
+    "appId": "com.notegoat.desktop",
+    "productName": "Note Goat",
+    "artifactName": "${productName}-${version}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -64,6 +68,10 @@
     "win": {
       "icon": "build/desktopicon.ico",
       "target": ["nsis"]
+    },
+    "linux": {
+      "executableName": "note-goat",
+      "category": "Education"
     }
   },
   "devDependencies": {

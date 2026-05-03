@@ -31,7 +31,7 @@ const ggufs = readdirSync(modelsDir).filter((f) => f.endsWith(".gguf"));
 if (ggufs.length === 0) {
   const msg =
     "[electron-bundle] No .gguf file in app-data/models/. For a self-contained build run:\n" +
-    "  pnpm --filter @studynest/desktop fetch-model\n" +
+    "  pnpm --filter @notegoat/desktop fetch-model\n" +
     "Or copy gemma-3-4b-it-q4_k_m.gguf there. Override with STUDYNEST_ALLOW_EMPTY_MODEL_BUNDLE=1 (app falls back to userData).";
   if (process.env.STUDYNEST_ALLOW_EMPTY_MODEL_BUNDLE === "1") {
     console.warn(msg);

@@ -7,12 +7,12 @@
  *  - 1 study plan with this-week tasks
  *  - A few XP events so the streak shows nonzero
  *
- * Run with: pnpm --filter @studynest/desktop seed
+ * Run with: pnpm --filter @notegoat/desktop seed
  */
 import { recordXp, upsertClass, upsertFlashcard, upsertFlashcardSet, upsertNote, upsertQuiz, upsertQuizQuestion, upsertStudyPlan, upsertStudyTask, } from "../src/db/repositories.js";
 import { XP_RULES } from "@studynest/shared";
 async function main() {
-    console.log("Seeding StudyNest demo data…");
+    console.log("Seeding Note Goat demo data…");
     const cls = await upsertClass({ name: "COM S 309", code: "Software Eng", color: "#8B5CF6" });
     const notes = await Promise.all([
         upsertNote({

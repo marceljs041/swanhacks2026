@@ -6,7 +6,7 @@ Total runtime: ~5 minutes.
 
 1. Make sure the cloud API is running: `pnpm api dev` (or the deployed Supabase + cloud API).
 2. Make sure the Gemma 3 4B model file is present at `app-data/models/gemma-3-4b-it-q4_k_m.gguf`.
-3. Run `STUDYNEST_USER_DATA="$HOME/Library/Application Support/StudyNest" pnpm --filter @studynest/desktop seed` to pre-populate one class, three notes, a flashcard set, a quiz, and a week of study tasks. (On Linux: `~/.config/StudyNest`. On Windows: `%APPDATA%\StudyNest`.)
+3. Run `STUDYNEST_USER_DATA="$HOME/Library/Application Support/Note Goat" pnpm --filter @notegoat/desktop seed` to pre-populate one class, three notes, a flashcard set, a quiz, and a week of study tasks. (On Linux: `~/.config/Note Goat`. On Windows: `%APPDATA%\Note Goat`.)
 4. Open the desktop app: `pnpm desktop dev`.
 5. Open the mobile app on a phone or simulator: `pnpm mobile dev`.
 6. Pair the two devices via Settings → "Generate pairing code" → scan/enter on mobile.
