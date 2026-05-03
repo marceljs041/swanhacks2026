@@ -1453,6 +1453,46 @@ export async function quizStats(): Promise<QuizStats> {
   };
 }
 
+/** Aggregates for `@studynest/shared` user badges (desktop local DB). */
+export interface BadgeProgressMetrics {
+  noteCount: number;
+  classCount: number;
+  quizAttempts: number;
+  quizBestPct: number;
+  flashcardReviews: number;
+  streak: number;
+  totalXp: number;
+}
+
+export async function fetchBadgeProgressMetrics(): Promise<BadgeProgressMetrics> {
+  const db = await getDb();
+  const noteRow = db
+    .prepare("select count(*) as c from notes where deleted_at is null")
+    .get() as { c: number };
+  const classRow = db
+    .prepare("select count(*) as c from classes where deleted_at is null")
+    .get() as { c: number };
+  const fcRow = db
+    .prepare(
+      "select coalesce(sum(review_count), 0) as s from flashcards where deleted_at is null",
+    )
+    .get() as { s: number };
+  const [qs, streak, xp] = await Promise.all([
+    quizStats(),
+    currentStreak(),
+    totalXp(),
+  ]);
+  return {
+    noteCount: noteRow.c,
+    classCount: classRow.c,
+    quizAttempts: qs.taken,
+    quizBestPct: qs.best,
+    flashcardReviews: fcRow.s,
+    streak,
+    totalXp: xp,
+  };
+}
+
 export interface QuizSummary {
   quiz: QuizRow;
   /** Resolved class — either via `quiz.class_id` directly or via `note.class_id`. */
