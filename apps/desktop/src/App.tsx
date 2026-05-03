@@ -17,6 +17,7 @@ import { Points } from "./components/Points.js";
 import { Settings } from "./components/Settings.js";
 import { RightPanel } from "./components/RightPanel.js";
 import { Onboarding } from "./components/Onboarding.js";
+import { AudioJobsToast } from "./components/AudioJobsToast.js";
 import { useApp } from "./store.js";
 import { desktopSyncDb, desktopTransport } from "./sync/adapter.js";
 import {
@@ -148,6 +149,7 @@ export function App() {
       <Sidebar />
       {renderMain(view)}
       {showRightPanel && <RightPanel />}
+      <AudioJobsToast />
     </div>
   );
 }

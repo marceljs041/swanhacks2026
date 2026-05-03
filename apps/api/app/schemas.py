@@ -194,3 +194,33 @@ class DeviceRegisterRequest(BaseModel):
 class DeviceRegisterResponse(BaseModel):
     ok: bool = True
     resolved_user_id: str
+
+
+# ---------- Audio chunk session (Gemma 4 E4B) ----------
+
+
+class AudioSessionCreateResponse(BaseModel):
+    session_id: str
+    max_chunk_seconds: int
+    sample_rate: int
+    backend: Literal["gemma4", "stub"]
+
+
+class AudioSessionChunkResponse(BaseModel):
+    ok: bool = True
+    chunks_received: int
+    total_seconds: float
+
+
+class AudioSessionFinalizeRequest(BaseModel):
+    title_hint: str | None = None
+    class_name: str | None = None
+
+
+class AudioSessionFinalizeResponse(BaseModel):
+    title: str
+    content_markdown: str
+    summary: str
+    key_terms: list[dict[str, str]] = Field(default_factory=list)
+    backend: Literal["gemma4", "stub"]
+    audio_seconds: float

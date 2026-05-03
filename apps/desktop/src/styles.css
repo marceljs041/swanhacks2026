@@ -11090,3 +11090,123 @@ button.class-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---- Audio jobs toast (chunked Gemma 4 audio pipeline) ----------- */
+.audio-toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9000;
+  pointer-events: none;
+}
+.audio-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 360px;
+  max-width: 90vw;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--color-border, rgba(0,0,0,0.08));
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.audio-toast:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
+}
+.audio-toast.tone-info     { border-left: 3px solid var(--color-accentSky,    #4ea1f0); }
+.audio-toast.tone-success  { border-left: 3px solid var(--color-success,      #2e9c5b); }
+.audio-toast.tone-danger   { border-left: 3px solid var(--color-danger,       #d24545); }
+.audio-toast.tone-muted    { border-left: 3px solid var(--color-textMuted,    #888); opacity: 0.85; }
+.audio-toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--color-accentAmberSoft, rgba(255, 184, 60, 0.18));
+  color: var(--color-accentAmber, #d18a00);
+  flex-shrink: 0;
+}
+.audio-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.audio-toast-title {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audio-toast-sub {
+  font-size: 12px;
+  color: var(--color-textMuted, #6c6c6c);
+  line-height: 1.35;
+}
+.audio-toast-bar {
+  display: block;
+  height: 4px;
+  background: var(--color-surfaceMuted, rgba(0,0,0,0.08));
+  border-radius: 999px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.audio-toast-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accentAmber, #d18a00);
+  transition: width 0.18s ease;
+}
+.audio-toast-cancel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-textMuted, #6c6c6c);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+.audio-toast-cancel:hover {
+  background: var(--color-surfaceMuted, rgba(0,0,0,0.06));
+  color: var(--color-text);
+}
+
+/* ---- Recorder modal — upload-file action ------------------------ */
+.recorder-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-textMuted, #6c6c6c);
+  margin-top: 8px;
+}
+.recorder-upload-link {
+  color: var(--color-accentSky, #4ea1f0);
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+.recorder-upload-link:hover { text-decoration: underline; }

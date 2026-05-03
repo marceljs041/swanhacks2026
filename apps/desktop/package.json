@@ -67,11 +67,15 @@
     },
     "win": {
       "icon": "build/desktopicon.ico",
-      "target": ["nsis"]
+      "target": ["nsis"],
+      "signAndEditExecutable": false
     },
     "linux": {
       "executableName": "note-goat",
       "category": "Education"
+    },
+    "nsis": {
+      "differentialPackage": false
     }
   },
   "devDependencies": {

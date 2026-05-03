@@ -127,3 +127,62 @@ export interface ClassOverviewResponse {
   /** Single short paragraph, plain text. */
   overview: string;
 }
+
+/* -------------------- Audio chunked-ingest session -------------------- */
+
+/**
+ * Multi-step "feed Gemma 4 E4B 30-second audio chunks then ask for notes"
+ * pipeline. The renderer slices the recording into ≤30s WAV chunks, POSTs
+ * each one to /local-ai/audio-session/{id}/chunk in order, then POSTs to
+ * /local-ai/audio-session/{id}/finalize to receive the structured note.
+ *
+ * The model only runs once — on finalize — using all accumulated chunks
+ * as a single multimodal user turn. The "fill the context window then
+ * make the notes" pattern is preserved; we just spare the wall-clock cost
+ * of intermediate ack generations.
+ */
+
+export interface AudioSessionCreateResponse {
+  session_id: string;
+  /** Max audio chunk length in seconds the sidecar will accept. */
+  max_chunk_seconds: number;
+  /** Required sample rate (Gemma 4 expects 16 kHz mono). */
+  sample_rate: number;
+  /**
+   * Chosen backend for diagnostics in the UI / toasts:
+   *   `gemma4`   → real audio inference via HF transformers.
+   *   `stub`     → audio is recorded but the sidecar can't run Gemma 4
+   *                 (no transformers / no GPU) — returns a placeholder
+   *                 note so the rest of the wiring can be tested.
+   */
+  backend: "gemma4" | "stub";
+}
+
+export interface AudioSessionChunkResponse {
+  ok: true;
+  /** Total chunks accepted so far for this session. */
+  chunks_received: number;
+  /** Sum of audio seconds the sidecar has buffered for this session. */
+  total_seconds: number;
+}
+
+export interface AudioSessionFinalizeRequest {
+  /** Optional human title hint (e.g. "Voice note · Apr 12 10:14"). */
+  title_hint?: string | null;
+  /** Optional class context for grounding (currently unused server-side). */
+  class_name?: string | null;
+}
+
+export interface AudioSessionFinalizeResponse {
+  /** Concise title the model picked from the recording. */
+  title: string;
+  /** Markdown body the desktop app drops into the note. */
+  content_markdown: string;
+  /** Short summary (2-3 sentences) — also shown on the note card. */
+  summary: string;
+  key_terms: Array<{ term: string; definition: string }>;
+  /** Reported by the sidecar so the toast can show "Used Gemma 4 E4B". */
+  backend: "gemma4" | "stub";
+  /** Total seconds of audio the model ingested before generating notes. */
+  audio_seconds: number;
+}

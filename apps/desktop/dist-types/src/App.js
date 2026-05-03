@@ -18,6 +18,7 @@ import { Points } from "./components/Points.js";
 import { Settings } from "./components/Settings.js";
 import { RightPanel } from "./components/RightPanel.js";
 import { Onboarding } from "./components/Onboarding.js";
+import { AudioJobsToast } from "./components/AudioJobsToast.js";
 import { useApp } from "./store.js";
 import { desktopSyncDb, desktopTransport } from "./sync/adapter.js";
 import { registerDesktopSyncWorker, unregisterDesktopSyncWorker, } from "./sync/controller.js";
@@ -120,7 +121,7 @@ export function App() {
             isQuizzesDetailWide ||
             isCalendarDetailWide
             ? " note-wide"
-            : ""}`, children: [macCustomChrome && _jsx("div", { className: "app-titlebar", "aria-hidden": true }), _jsx(Sidebar, {}), renderMain(view), showRightPanel && _jsx(RightPanel, {})] }));
+            : ""}`, children: [macCustomChrome && _jsx("div", { className: "app-titlebar", "aria-hidden": true }), _jsx(Sidebar, {}), renderMain(view), showRightPanel && _jsx(RightPanel, {}), _jsx(AudioJobsToast, {})] }));
 }
 function renderMain(view) {
     switch (view.kind) {

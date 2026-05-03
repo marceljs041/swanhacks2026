@@ -9,6 +9,7 @@ import { Card } from "./ui/Card.js";
 import { ConfirmDialog } from "./ui/ConfirmDialog.js";
 import { MoreMenu } from "./ui/MoreMenu.js";
 import { AudioRecorderModal } from "./AudioRecorderModal.js";
+import { captureAudioToNote } from "../lib/audioCapture.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { CalendarIcon, CameraIcon, CheckIcon, ChevDownIcon, ChevLeftIcon, ChevRightIcon, ClockIcon, CloudCheckIcon, CloudOffIcon, EyeIcon, FlameIcon, ImageIcon, MicIcon, MoreIcon, NoteIcon, PencilIcon, SparklesIcon, TrashIcon, UploadIcon, } from "./icons.js";
 const PAGE_SIZE = 10;
@@ -265,28 +266,9 @@ const AllNotesQuickActions = ({ onCreated }) => {
             setError(err.message || "Failed to attach file.");
         }
     }
-    async function handleAudio(blob) {
+    async function handleAudio(blob, fileName) {
         try {
-            const dataUri = await blobToDataUri(blob);
-            const title = `Voice note · ${new Date().toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-            })}`;
-            const note = await upsertNote({
-                title,
-                content_markdown: "Recorded audio attached. Open the note to play it back or transcribe later.",
-            });
-            await upsertAttachment({
-                note_id: note.id,
-                type: "audio",
-                local_uri: dataUri,
-                file_name: "recording.webm",
-                mime_type: blob.type || "audio/webm",
-                size_bytes: blob.size,
-            });
-            await recordXp("createNote", XP_RULES.createNote);
+            const note = await captureAudioToNote({ blob, fileName });
             setSelectedNote(note);
             setView({ kind: "note", noteId: note.id });
             onCreated();
@@ -298,9 +280,9 @@ const AllNotesQuickActions = ({ onCreated }) => {
     return (_jsxs(_Fragment, { children: [_jsxs("section", { className: "quick-actions", children: [_jsxs("button", { type: "button", className: "quick-action quick-action--new-note", onClick: () => void newNote(), children: [_jsx("span", { className: "qa-icon", children: _jsx(PencilIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "New Note" }), _jsx("span", { className: "qa-sub", children: "Start writing" })] })] }), _jsxs("button", { type: "button", className: "quick-action quick-action--record-audio", onClick: () => {
                             setError(null);
                             setRecorderOpen(true);
-                        }, children: [_jsx("span", { className: "qa-icon", children: _jsx(MicIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "Record Audio" }), _jsx("span", { className: "qa-sub", children: "Capture ideas" })] })] }), _jsxs("button", { type: "button", className: "quick-action quick-action--scan-board", onClick: () => imageRef.current?.click(), children: [_jsx("span", { className: "qa-icon", children: _jsx(CameraIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "Scan Board" }), _jsx("span", { className: "qa-sub", children: "Snap whiteboard" })] })] }), _jsxs("button", { type: "button", className: "quick-action quick-action--upload-file", onClick: () => fileRef.current?.click(), children: [_jsx("span", { className: "qa-icon", children: _jsx(UploadIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "Upload File" }), _jsx("span", { className: "qa-sub", children: "Add documents" })] })] })] }), _jsx("input", { ref: imageRef, type: "file", accept: "image/*", capture: "environment", style: { display: "none" }, onChange: (e) => void onScanPicked(e) }), _jsx("input", { ref: fileRef, type: "file", style: { display: "none" }, onChange: (e) => void onFilePicked(e) }), recorderOpen && (_jsx(AudioRecorderModal, { onClose: () => setRecorderOpen(false), onSave: async (b) => {
+                        }, children: [_jsx("span", { className: "qa-icon", children: _jsx(MicIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "Record Audio" }), _jsx("span", { className: "qa-sub", children: "Capture ideas" })] })] }), _jsxs("button", { type: "button", className: "quick-action quick-action--scan-board", onClick: () => imageRef.current?.click(), children: [_jsx("span", { className: "qa-icon", children: _jsx(CameraIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "Scan Board" }), _jsx("span", { className: "qa-sub", children: "Snap whiteboard" })] })] }), _jsxs("button", { type: "button", className: "quick-action quick-action--upload-file", onClick: () => fileRef.current?.click(), children: [_jsx("span", { className: "qa-icon", children: _jsx(UploadIcon, { size: 20 }) }), _jsxs("span", { className: "qa-text", children: [_jsx("span", { className: "qa-title", children: "Upload File" }), _jsx("span", { className: "qa-sub", children: "Add documents" })] })] })] }), _jsx("input", { ref: imageRef, type: "file", accept: "image/*", capture: "environment", style: { display: "none" }, onChange: (e) => void onScanPicked(e) }), _jsx("input", { ref: fileRef, type: "file", style: { display: "none" }, onChange: (e) => void onFilePicked(e) }), recorderOpen && (_jsx(AudioRecorderModal, { onClose: () => setRecorderOpen(false), onSave: async (b, fileName) => {
                     setRecorderOpen(false);
-                    await handleAudio(b);
+                    await handleAudio(b, fileName ?? null);
                 } })), error && (_jsx("div", { className: "pill error", style: { alignSelf: "flex-start" }, children: error }))] }));
 };
 const AllNotesTable = ({ rows, classMap, attMap, studyTools, needSummary, unsynced, onOpen, onDelete, onToggleFavorite, }) => (_jsxs("div", { className: "all-notes-table", children: [_jsxs("div", { className: "ant-head", children: [_jsx("span", { children: "Note" }), _jsx("span", { children: "Class" }), _jsx("span", { children: "Tags" }), _jsx("span", { children: "Last edited" }), _jsx("span", { children: "Type / Attachments" }), _jsx("span", { children: "AI Status" }), _jsx("span", { children: "Sync Status" }), _jsx("span", { "aria-hidden": true })] }), rows.map((n) => {
@@ -473,14 +455,6 @@ function fileToDataUri(file) {
         r.onerror = () => reject(r.error ?? new Error("read failed"));
         r.onload = () => resolve(String(r.result));
         r.readAsDataURL(file);
-    });
-}
-function blobToDataUri(blob) {
-    return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onerror = () => reject(r.error ?? new Error("read failed"));
-        r.onload = () => resolve(String(r.result));
-        r.readAsDataURL(blob);
     });
 }
 const Star = ({ filled }) => (_jsx("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: filled ? "currentColor" : "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinejoin: "round", "aria-hidden": true, children: _jsx("path", { d: "m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1L3.2 9.4l6.1-.9L12 3Z" }) }));

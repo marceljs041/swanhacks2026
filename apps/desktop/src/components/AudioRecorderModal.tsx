@@ -4,13 +4,26 @@ import { MicIcon } from "./icons.js";
 
 interface RecorderProps {
   onClose: () => void;
-  onSave: (blob: Blob) => void | Promise<void>;
+  /**
+   * Called once the user confirms a recording or upload. Receives the
+   * source audio blob (recorded `audio/webm` or an uploaded file in any
+   * format the platform can decode) plus the original filename if the
+   * user picked a file from disk. The host is expected to dismiss the
+   * modal and kick off the chunked-upload pipeline in the background
+   * (see {@link startAudioJob}).
+   */
+  onSave: (source: Blob, fileName?: string | null) => void | Promise<void>;
 }
 
 /**
  * Modal microphone recorder. Lives in its own file so both the Home
  * dashboard and the Notes screen can launch it from their "Record
  * Audio" quick action without duplicating the MediaRecorder lifecycle.
+ *
+ * The modal also exposes an "or upload an audio file" affordance so
+ * users with existing recordings can drop them into the same chunked-
+ * audio → Gemma 4 → notes pipeline. Both code paths emit the same
+ * `Blob` to `onSave`.
  *
  * Cleanup notes:
  *   - The MediaStream tracks are stopped both on stop() and on
@@ -23,10 +36,14 @@ export const AudioRecorderModal: FC<RecorderProps> = ({ onClose, onSave }) => {
   const [seconds, setSeconds] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  /** When the source is an uploaded file we keep the original name so
+   * the placeholder note title is more useful than "Voice note". */
+  const [sourceName, setSourceName] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -50,6 +67,7 @@ export const AudioRecorderModal: FC<RecorderProps> = ({ onClose, onSave }) => {
       rec.onstop = () => {
         const b = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         setBlob(b);
+        setSourceName(null);
         setPreviewUrl(URL.createObjectURL(b));
         setState("ready");
         streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -74,10 +92,32 @@ export const AudioRecorderModal: FC<RecorderProps> = ({ onClose, onSave }) => {
 
   function discard(): void {
     setBlob(null);
+    setSourceName(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setSeconds(0);
     setState("idle");
+  }
+
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    if (!file.type.startsWith("audio/")) {
+      setError("Please select an audio file.");
+      setState("error");
+      return;
+    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setBlob(file);
+    setSourceName(file.name);
+    setPreviewUrl(URL.createObjectURL(file));
+    // Audio duration isn't trivially known until the <audio> loads,
+    // but the recorder timer label is hidden when we have a file —
+    // see render below.
+    setSeconds(0);
+    setState("ready");
   }
 
   return (
@@ -91,11 +131,15 @@ export const AudioRecorderModal: FC<RecorderProps> = ({ onClose, onSave }) => {
           <div className={`recorder-orb ${state}`} aria-hidden>
             <MicIcon size={28} />
           </div>
-          <div className="recorder-time">{fmtTime(seconds)}</div>
+          <div className="recorder-time">
+            {sourceName ? sourceName : fmtTime(seconds)}
+          </div>
           <div className="recorder-hint">
-            {state === "idle" && "Click record to start. We'll save it as a new note."}
+            {state === "idle" && "Click record to start, or upload a file. Gemma 4 will transcribe and turn it into notes."}
             {state === "recording" && "Recording… click stop when you're done."}
-            {state === "ready" && "Preview your clip, then save or discard."}
+            {state === "ready" && (sourceName
+              ? "Preview your file, then save to send it to Gemma 4."
+              : "Preview your clip, then save or discard.")}
             {state === "error" && (error ?? "Something went wrong.")}
           </div>
           {previewUrl && state === "ready" && (
@@ -112,17 +156,38 @@ export const AudioRecorderModal: FC<RecorderProps> = ({ onClose, onSave }) => {
             )}
             {state === "ready" && (
               <>
-                <button className="btn-secondary" onClick={discard}>Re-record</button>
+                <button className="btn-secondary" onClick={discard}>
+                  {sourceName ? "Pick different file" : "Re-record"}
+                </button>
                 <button
                   className="btn-primary"
                   disabled={!blob}
-                  onClick={() => blob && void onSave(blob)}
+                  onClick={() => blob && void onSave(blob, sourceName)}
                 >
-                  Save as note
+                  Save & transcribe
                 </button>
               </>
             )}
           </div>
+          {(state === "idle" || state === "error") && (
+            <div className="recorder-upload">
+              <span>or</span>
+              <button
+                type="button"
+                className="recorder-upload-link"
+                onClick={() => fileRef.current?.click()}
+              >
+                upload an audio file
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="audio/*"
+                style={{ display: "none" }}
+                onChange={onPickFile}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

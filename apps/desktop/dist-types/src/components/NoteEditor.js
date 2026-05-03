@@ -1,6 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, } from "react";
 import { ai } from "../lib/ai.js";
+import { useAudioJobs } from "../lib/audioJobs.js";
 import { BRAND_AI_URL } from "../lib/brand.js";
 import { describeAgo } from "../lib/relativeTime.js";
 import { NOTE_ICON_LIST, NoteGlyph, getNoteIconComponent, } from "../lib/noteIcons.js";
@@ -56,6 +57,45 @@ export const NoteEditor = ({ noteId }) => {
         void listQuizzes(noteId).then(setQuizzes);
         void listNotes(null).then(setAllNotes);
         void listClasses().then(setClasses);
+    }, [noteId]);
+    // When a chunked-audio job for THIS note flips to "done" the
+    // background pipeline has rewritten the row's content_markdown — pull
+    // it back from disk so the editor reflects the transcript without
+    // the user having to navigate away and back. We only adopt the new
+    // body if the user hasn't started editing it themselves yet (the
+    // body is still empty, the placeholder, or matches what we last
+    // loaded), to avoid clobbering in-flight typing.
+    useEffect(() => {
+        let cancelled = false;
+        const unsub = useAudioJobs.subscribe((state, prev) => {
+            const current = Object.values(state.jobs).find((j) => j.noteId === noteId && j.phase === "done");
+            const wasAlreadyDone = prev &&
+                Object.values(prev.jobs).some((j) => j.noteId === noteId && j.phase === "done");
+            if (!current || wasAlreadyDone)
+                return;
+            void getNote(noteId).then((n) => {
+                if (cancelled || !n)
+                    return;
+                const fresh = ensureLeadingTitleH1(n.content_markdown ?? "", n.title || "Untitled");
+                // Only adopt if the editor body looks "untouched" — either
+                // empty, or still showing the transcribing placeholder, or
+                // identical to what we last loaded from disk.
+                const bodyNow = bodyRef.current;
+                const placeholderRe = /Transcribing recording with Gemma 4/;
+                const looksUntouched = !bodyNow ||
+                    placeholderRe.test(bodyNow) ||
+                    bodyNow.trim().length < 80;
+                if (looksUntouched) {
+                    setNote(n);
+                    setTitle(n.title);
+                    setBody(fresh);
+                }
+            });
+        });
+        return () => {
+            cancelled = true;
+            unsub();
+        };
     }, [noteId]);
     useEffect(() => {
         let cancelled = false;

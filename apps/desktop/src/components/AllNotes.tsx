@@ -21,6 +21,7 @@ import { Card } from "./ui/Card.js";
 import { ConfirmDialog } from "./ui/ConfirmDialog.js";
 import { MoreMenu, type MoreMenuItem } from "./ui/MoreMenu.js";
 import { AudioRecorderModal } from "./AudioRecorderModal.js";
+import { captureAudioToNote } from "../lib/audioCapture.js";
 import { HeroSearch } from "./HeroSearch.js";
 import {
   CalendarIcon,
@@ -611,29 +612,9 @@ const AllNotesQuickActions: FC<{ onCreated: () => void }> = ({ onCreated }) => {
     }
   }
 
-  async function handleAudio(blob: Blob): Promise<void> {
+  async function handleAudio(blob: Blob, fileName?: string | null): Promise<void> {
     try {
-      const dataUri = await blobToDataUri(blob);
-      const title = `Voice note · ${new Date().toLocaleString([], {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })}`;
-      const note = await upsertNote({
-        title,
-        content_markdown:
-          "Recorded audio attached. Open the note to play it back or transcribe later.",
-      });
-      await upsertAttachment({
-        note_id: note.id,
-        type: "audio",
-        local_uri: dataUri,
-        file_name: "recording.webm",
-        mime_type: blob.type || "audio/webm",
-        size_bytes: blob.size,
-      });
-      await recordXp("createNote", XP_RULES.createNote);
+      const note = await captureAudioToNote({ blob, fileName });
       setSelectedNote(note);
       setView({ kind: "note", noteId: note.id });
       onCreated();
@@ -706,9 +687,9 @@ const AllNotesQuickActions: FC<{ onCreated: () => void }> = ({ onCreated }) => {
       {recorderOpen && (
         <AudioRecorderModal
           onClose={() => setRecorderOpen(false)}
-          onSave={async (b) => {
+          onSave={async (b, fileName) => {
             setRecorderOpen(false);
-            await handleAudio(b);
+            await handleAudio(b, fileName ?? null);
           }}
         />
       )}
@@ -1098,15 +1079,6 @@ function fileToDataUri(file: File): Promise<string> {
     r.onerror = () => reject(r.error ?? new Error("read failed"));
     r.onload = () => resolve(String(r.result));
     r.readAsDataURL(file);
-  });
-}
-
-function blobToDataUri(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onerror = () => reject(r.error ?? new Error("read failed"));
-    r.onload = () => resolve(String(r.result));
-    r.readAsDataURL(blob);
   });
 }
 

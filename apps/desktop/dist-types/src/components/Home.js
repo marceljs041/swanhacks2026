@@ -5,6 +5,7 @@ import { useApp } from "../store.js";
 import { Card } from "./ui/Card.js";
 import { Donut, ProgressRing } from "./ui/ProgressRing.js";
 import { AudioRecorderModal } from "./AudioRecorderModal.js";
+import { captureAudioToNote } from "../lib/audioCapture.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { BRAND_HERO_URL } from "../lib/brand.js";
 import { firstName } from "../lib/profile.js";
@@ -119,28 +120,9 @@ const QuickActions = ({ onCreated }) => {
             setError(err.message || "Failed to upload image.");
         }
     }
-    async function handleAudio(blob) {
+    async function handleAudio(blob, fileName) {
         try {
-            const dataUri = await blobToDataUri(blob);
-            const title = `Voice note · ${new Date().toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-            })}`;
-            const note = await upsertNote({
-                title,
-                content_markdown: "Recorded audio attached. Open the note to play it back or transcribe later.",
-            });
-            await upsertAttachment({
-                note_id: note.id,
-                type: "audio",
-                local_uri: dataUri,
-                file_name: "recording.webm",
-                mime_type: blob.type || "audio/webm",
-                size_bytes: blob.size,
-            });
-            await recordXp("createNote", XP_RULES.createNote);
+            const note = await captureAudioToNote({ blob, fileName });
             setSelectedNote(note);
             setView({ kind: "note", noteId: note.id });
             onCreated();
@@ -152,9 +134,9 @@ const QuickActions = ({ onCreated }) => {
     return (_jsxs(_Fragment, { children: [_jsxs("section", { className: "quick-actions", children: [_jsx(QuickActionTile, { title: "New Note", sub: "Start writing", icon: _jsx(PencilIcon, { size: 20 }), bg: "var(--color-accentRoseSoft)", fg: "var(--color-accentRose)", onClick: () => void newNote() }), _jsx(QuickActionTile, { title: "Record Audio", sub: "Capture ideas", icon: _jsx(MicIcon, { size: 20 }), bg: "var(--color-accentAmberSoft)", fg: "var(--color-accentAmber)", onClick: () => {
                             setError(null);
                             setRecorderOpen(true);
-                        } }), _jsx(QuickActionTile, { title: "Upload Image", sub: "Add from device", icon: _jsx(ImageIcon, { size: 20 }), bg: "var(--color-accentSkySoft)", fg: "var(--color-accentSky)", onClick: () => fileRef.current?.click() }), _jsx(QuickActionTile, { title: "Generate Flashcards", sub: "From your notes", icon: _jsx(SparklesIcon, { size: 20 }), bg: "var(--color-accentPeachSoft)", fg: "var(--color-accentPeach)", onClick: () => setView({ kind: "flashcards" }) })] }), _jsx("input", { ref: fileRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: (e) => void onImagePicked(e) }), recorderOpen && (_jsx(AudioRecorderModal, { onClose: () => setRecorderOpen(false), onSave: async (b) => {
+                        } }), _jsx(QuickActionTile, { title: "Upload Image", sub: "Add from device", icon: _jsx(ImageIcon, { size: 20 }), bg: "var(--color-accentSkySoft)", fg: "var(--color-accentSky)", onClick: () => fileRef.current?.click() }), _jsx(QuickActionTile, { title: "Generate Flashcards", sub: "From your notes", icon: _jsx(SparklesIcon, { size: 20 }), bg: "var(--color-accentPeachSoft)", fg: "var(--color-accentPeach)", onClick: () => setView({ kind: "flashcards" }) })] }), _jsx("input", { ref: fileRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: (e) => void onImagePicked(e) }), recorderOpen && (_jsx(AudioRecorderModal, { onClose: () => setRecorderOpen(false), onSave: async (b, fileName) => {
                     setRecorderOpen(false);
-                    await handleAudio(b);
+                    await handleAudio(b, fileName ?? null);
                 } })), error && (_jsx("div", { className: "pill error", style: { alignSelf: "flex-start" }, children: error }))] }));
 };
 function stripExt(name) {
@@ -167,14 +149,6 @@ function fileToDataUri(file) {
         r.onerror = () => reject(r.error ?? new Error("read failed"));
         r.onload = () => resolve(String(r.result));
         r.readAsDataURL(file);
-    });
-}
-function blobToDataUri(blob) {
-    return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onerror = () => reject(r.error ?? new Error("read failed"));
-        r.onload = () => resolve(String(r.result));
-        r.readAsDataURL(blob);
     });
 }
 /* ---- streak card ------------------------------------------------- */

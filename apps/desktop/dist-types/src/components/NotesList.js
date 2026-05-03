@@ -9,6 +9,7 @@ import { Card } from "./ui/Card.js";
 import { ConfirmDialog } from "./ui/ConfirmDialog.js";
 import { MoreMenu } from "./ui/MoreMenu.js";
 import { AudioRecorderModal } from "./AudioRecorderModal.js";
+import { captureAudioToNote } from "../lib/audioCapture.js";
 import { HeroSearch } from "./HeroSearch.js";
 import { ArrowRightIcon, BoltIcon, CalendarIcon, CameraIcon, ClockIcon, CloudOffIcon, EyeIcon, FlashcardIcon, MicIcon, NoteIcon, PencilIcon, QuizIcon, SparklesIcon, TrashIcon, UploadIcon, WarningIcon, } from "./icons.js";
 export const NotesList = () => {
@@ -297,29 +298,13 @@ const NotesQuickActions = ({ onCreated }) => {
             setError(err.message || "Failed to attach file.");
         }
     }
-    async function handleAudio(blob) {
+    async function handleAudio(blob, fileName) {
         try {
-            const dataUri = await blobToDataUri(blob);
-            const title = `Voice note · ${new Date().toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-            })}`;
-            const note = await upsertNote({
-                title,
-                class_id: selectedClassId ?? null,
-                content_markdown: "Recorded audio attached. Open the note to play it back or transcribe later.",
+            const note = await captureAudioToNote({
+                blob,
+                fileName,
+                classId: selectedClassId ?? null,
             });
-            await upsertAttachment({
-                note_id: note.id,
-                type: "audio",
-                local_uri: dataUri,
-                file_name: "recording.webm",
-                mime_type: blob.type || "audio/webm",
-                size_bytes: blob.size,
-            });
-            await recordXp("createNote", XP_RULES.createNote);
             setSelectedNote(note);
             setView({ kind: "note", noteId: note.id });
             onCreated();
@@ -331,9 +316,9 @@ const NotesQuickActions = ({ onCreated }) => {
     return (_jsxs(_Fragment, { children: [_jsxs("section", { className: "quick-actions", children: [_jsx(QuickActionTile, { variant: "new-note", title: "New Note", sub: "Start writing", icon: _jsx(PencilIcon, { size: 20 }), onClick: () => void newNote() }), _jsx(QuickActionTile, { variant: "record-audio", title: "Record Audio", sub: "Capture ideas", icon: _jsx(MicIcon, { size: 20 }), onClick: () => {
                             setError(null);
                             setRecorderOpen(true);
-                        } }), _jsx(QuickActionTile, { variant: "scan-board", title: "Scan Board", sub: "Snap whiteboard", icon: _jsx(CameraIcon, { size: 20 }), onClick: () => imageRef.current?.click() }), _jsx(QuickActionTile, { variant: "upload-file", title: "Upload File", sub: "Add documents", icon: _jsx(UploadIcon, { size: 20 }), onClick: () => fileRef.current?.click() })] }), _jsx("input", { ref: imageRef, type: "file", accept: "image/*", capture: "environment", style: { display: "none" }, onChange: (e) => void onScanPicked(e) }), _jsx("input", { ref: fileRef, type: "file", style: { display: "none" }, onChange: (e) => void onFilePicked(e) }), recorderOpen && (_jsx(AudioRecorderModal, { onClose: () => setRecorderOpen(false), onSave: async (b) => {
+                        } }), _jsx(QuickActionTile, { variant: "scan-board", title: "Scan Board", sub: "Snap whiteboard", icon: _jsx(CameraIcon, { size: 20 }), onClick: () => imageRef.current?.click() }), _jsx(QuickActionTile, { variant: "upload-file", title: "Upload File", sub: "Add documents", icon: _jsx(UploadIcon, { size: 20 }), onClick: () => fileRef.current?.click() })] }), _jsx("input", { ref: imageRef, type: "file", accept: "image/*", capture: "environment", style: { display: "none" }, onChange: (e) => void onScanPicked(e) }), _jsx("input", { ref: fileRef, type: "file", style: { display: "none" }, onChange: (e) => void onFilePicked(e) }), recorderOpen && (_jsx(AudioRecorderModal, { onClose: () => setRecorderOpen(false), onSave: async (b, fileName) => {
                     setRecorderOpen(false);
-                    await handleAudio(b);
+                    await handleAudio(b, fileName ?? null);
                 } })), error && (_jsx("div", { className: "pill error", style: { alignSelf: "flex-start" }, children: error }))] }));
 };
 function stripExt(name) {
@@ -346,14 +331,6 @@ function fileToDataUri(file) {
         r.onerror = () => reject(r.error ?? new Error("read failed"));
         r.onload = () => resolve(String(r.result));
         r.readAsDataURL(file);
-    });
-}
-function blobToDataUri(blob) {
-    return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onerror = () => reject(r.error ?? new Error("read failed"));
-        r.onload = () => resolve(String(r.result));
-        r.readAsDataURL(blob);
     });
 }
 /* ---- continue writing ------------------------------------------- */

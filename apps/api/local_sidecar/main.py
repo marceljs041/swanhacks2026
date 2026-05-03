@@ -8,15 +8,20 @@ the cloud API's /ai/* routes — clients can swap base URLs transparently.
 from __future__ import annotations
 
 import os
+import re
 import threading
+import wave
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from io import BytesIO
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.prompts import (
     ask_class_prompt,
+    audio_notes_finalize_text,
+    audio_notes_intro_text,
     class_overview_prompt,
     flashcards_prompt,
     quiz_prompt,
@@ -27,6 +32,10 @@ from app.prompts import (
 from app.schemas import (
     AskRequest,
     AskResponse,
+    AudioSessionChunkResponse,
+    AudioSessionCreateResponse,
+    AudioSessionFinalizeRequest,
+    AudioSessionFinalizeResponse,
     ClassOverviewRequest,
     ClassOverviewResponse,
     FlashcardsRequest,
@@ -47,7 +56,12 @@ from app.services.ai_service import (
     _fallback_study_plan,
     _fallback_summary,
 )
-from local_sidecar import llm
+from local_sidecar import audio_llm, llm
+from local_sidecar.audio_session import (
+    MAX_CHUNK_SECONDS_TARGET,
+    TARGET_SAMPLE_RATE,
+    registry as audio_registry,
+)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -69,7 +83,8 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict:
     s = llm.status()
-    return {"ok": True, **s}
+    a = audio_llm.status()
+    return {"ok": True, **s, **a}
 
 
 def _local_or_template(prompt: dict, sync_fallback) -> dict:
@@ -276,6 +291,167 @@ async def key_terms(req: NoteContext) -> SummaryResponse:
         lambda: _fallback_summary(req.title, req.content),
     )
     return SummaryResponse(**data)
+
+
+# ---------------------- Audio chunked-ingest session ----------------------
+
+
+def _wav_duration_seconds(raw: bytes) -> float:
+    """Inspect a renderer-supplied WAV header to learn the chunk length.
+
+    We only trust the header for the duration check; the audio bytes
+    themselves are forwarded verbatim to the model. Falls back to a
+    rough estimate (assuming 16 kHz mono int16) if the WAV header is
+    malformed — that estimate is what the upper-bound check uses to
+    refuse pathological multi-minute uploads."""
+    try:
+        with wave.open(BytesIO(raw), "rb") as wf:
+            frames = wf.getnframes()
+            rate = wf.getframerate() or TARGET_SAMPLE_RATE
+            return frames / float(rate)
+    except Exception:
+        # 16 kHz mono int16 → 32_000 bytes/sec. Drop the (small) WAV
+        # header overhead before estimating.
+        body = max(0, len(raw) - 44)
+        return body / 32000.0
+
+
+def _stub_finalize(
+    *, audio_seconds: float, total_chunks: int, title_hint: str | None
+) -> dict[str, object]:
+    """Returned when Gemma 4 audio backend isn't available.
+
+    Mirrors the real schema so the renderer can ship the result
+    straight into the note. Honest about what happened so the user
+    isn't misled into thinking transcription succeeded."""
+    title = (title_hint or "Voice note").strip() or "Voice note"
+    title = re.sub(r"\s+", " ", title)[:80]
+    summary = (
+        f"Recorded {audio_seconds:.0f}s of audio split into {total_chunks} "
+        "chunk(s). The Gemma 4 E4B audio backend isn't loaded in this "
+        "sidecar, so the recording was saved as an attachment but no "
+        "transcript was generated."
+    )
+    body = (
+        "> _This note was created from an audio recording, but the "
+        "Gemma 4 E4B multimodal backend isn't available in the local "
+        "sidecar. Install the optional `audio` extras (transformers + "
+        "torch + librosa) and restart the desktop app to enable on-"
+        "device speech-to-notes._\n\n"
+        f"- Recording length: ~{audio_seconds:.0f} seconds\n"
+        f"- Chunks captured: {total_chunks}\n"
+    )
+    return {
+        "title": title,
+        "summary": summary,
+        "content_markdown": body,
+        "key_terms": [],
+    }
+
+
+@app.post("/local-ai/audio-session", response_model=AudioSessionCreateResponse)
+def create_audio_session() -> AudioSessionCreateResponse:
+    session = audio_registry.create()
+    return AudioSessionCreateResponse(
+        session_id=session.session_id,
+        max_chunk_seconds=MAX_CHUNK_SECONDS_TARGET,
+        sample_rate=TARGET_SAMPLE_RATE,
+        backend=audio_llm.backend_name(),  # type: ignore[arg-type]
+    )
+
+
+@app.post(
+    "/local-ai/audio-session/{session_id}/chunk",
+    response_model=AudioSessionChunkResponse,
+)
+async def append_audio_chunk(
+    session_id: str,
+    chunk: UploadFile = File(...),
+    index: int = Form(...),
+    total: int = Form(...),
+) -> AudioSessionChunkResponse:
+    """Append one ordered WAV chunk to an existing session.
+
+    `index` / `total` are accepted for client-side sanity / UI progress
+    but the server trusts the *arrival order* — chunks must be POSTed
+    sequentially. The renderer's pipeline awaits each response before
+    sending the next one, so this is safe in practice."""
+    raw = await chunk.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty_chunk")
+    seconds = _wav_duration_seconds(raw)
+    try:
+        session = audio_registry.append_chunk(
+            session_id, audio_bytes=raw, seconds=seconds
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
+    if session is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    if total > 0 and index + 1 > total:
+        raise HTTPException(status_code=400, detail="index_out_of_range")
+    return AudioSessionChunkResponse(
+        ok=True,
+        chunks_received=len(session.chunks),
+        total_seconds=session.total_seconds,
+    )
+
+
+@app.post(
+    "/local-ai/audio-session/{session_id}/finalize",
+    response_model=AudioSessionFinalizeResponse,
+)
+async def finalize_audio_session(
+    session_id: str, req: AudioSessionFinalizeRequest
+) -> AudioSessionFinalizeResponse:
+    """Run the model on every accumulated chunk and return the note.
+
+    The session is removed regardless of model success / failure so
+    the audio bytes are freed promptly — even on the stub backend."""
+    session = audio_registry.pop(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    if not session.chunks:
+        raise HTTPException(status_code=400, detail="no_chunks_uploaded")
+
+    intro = audio_notes_intro_text(
+        total_chunks=len(session.chunks),
+        total_seconds=session.total_seconds,
+    )
+    finalize = audio_notes_finalize_text(title_hint=req.title_hint)
+
+    backend: str = "stub"
+    payload: dict[str, object] | None = None
+    try:
+        result = audio_llm.generate_notes(
+            chunks=session.chunks, intro_text=intro, finalize_text=finalize
+        )
+        if result is not None and isinstance(result, dict):
+            payload = result
+            backend = "gemma4"
+    except Exception as e:
+        print(f"[sidecar] audio finalize failed: {e}")
+        payload = None
+
+    if payload is None:
+        payload = _stub_finalize(
+            audio_seconds=session.total_seconds,
+            total_chunks=len(session.chunks),
+            title_hint=req.title_hint,
+        )
+
+    return AudioSessionFinalizeResponse(
+        title=str(payload.get("title", "Voice note")).strip() or "Voice note",
+        summary=str(payload.get("summary", "")).strip(),
+        content_markdown=str(payload.get("content_markdown", "")),
+        key_terms=[
+            {"term": str(kt.get("term", "")), "definition": str(kt.get("definition", ""))}
+            for kt in (payload.get("key_terms") or [])
+            if isinstance(kt, dict)
+        ],
+        backend=backend,  # type: ignore[arg-type]
+        audio_seconds=session.total_seconds,
+    )
 
 
 def run() -> None:

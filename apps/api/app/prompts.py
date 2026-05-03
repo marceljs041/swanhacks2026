@@ -245,6 +245,67 @@ def class_overview_prompt(
     }
 
 
+AUDIO_NOTES_SYSTEM = (
+    "You are StudyNest's audio note-taker. The user has just shared a "
+    "recording broken into ordered 30-second audio chunks. Your job is to "
+    "listen to ALL of them in order, treating them as one continuous "
+    "recording (a lecture, a study session, a memo), and then produce "
+    "structured study notes. "
+    "Always respond with VALID JSON only — no prose, no markdown fences, "
+    "no commentary. The JSON must match the schema in the user's request "
+    "exactly."
+)
+
+
+def audio_notes_intro_text(*, total_chunks: int, total_seconds: float) -> str:
+    """First text block in the multimodal user turn. Tells Gemma the chunks
+    are coming, that they're in order, and how long the recording is."""
+    return (
+        f"I'm sending you {total_chunks} consecutive ~30-second audio "
+        f"chunks (about {total_seconds:.0f}s total) from a single recording. "
+        "Listen to ALL of them in order before responding — they form one "
+        "continuous audio. After the last chunk you'll see a final "
+        "instruction asking you to write the notes."
+    )
+
+
+def audio_notes_finalize_text(*, title_hint: str | None) -> str:
+    """Last text block in the multimodal user turn — the "now make the
+    notes" prompt. Gemma generates one JSON object summarising everything
+    it heard across all chunks."""
+    hint = ""
+    if title_hint and title_hint.strip():
+        hint = (
+            f"\n\nThe recording is currently provisionally titled "
+            f"\"{title_hint.strip()}\". Pick a better short title if the "
+            "audio suggests one, otherwise reuse the hint."
+        )
+    return (
+        "That was the last chunk. Now write study notes for the FULL "
+        "recording you just heard.\n\n"
+        "Requirements:\n"
+        "- `title` is 3–8 words, no quotes, no trailing punctuation.\n"
+        "- `summary` is 2–3 sentences capturing the main idea.\n"
+        "- `content_markdown` is the body of a study note: short intro "
+        "paragraph, then 4–10 bullet points or a couple of small "
+        "subsections (`### Heading`) covering the substantive content. "
+        "Use plain markdown — no front-matter, no code fences, no images.\n"
+        "- `key_terms` lists 3–6 concepts that appeared in the audio with "
+        "1-sentence definitions in the user's words where possible.\n"
+        "- If the audio is silent / unintelligible, say so honestly in "
+        "`summary` and keep `content_markdown` brief; do NOT invent "
+        "content."
+        f"{hint}\n\n"
+        "Respond with JSON matching this schema:\n"
+        "{\n"
+        '  "title": "string",\n'
+        '  "summary": "string",\n'
+        '  "content_markdown": "string",\n'
+        '  "key_terms": [{"term": "string", "definition": "string"}]\n'
+        "}"
+    )
+
+
 def simple_explain_prompt(
     *, title: str, content: str, audience: str = "highschool"
 ) -> dict[str, str]:
