@@ -101,6 +101,50 @@ class StudyPlanResponse(BaseModel):
     tasks: list[dict[str, Any]]
 
 
+class AskMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ClassOverviewNoteInput(BaseModel):
+    note_id: str
+    title: str
+    summary: str | None = None
+    content: str = ""
+
+
+class ClassOverviewRequest(BaseModel):
+    class_name: str
+    class_subtitle: str | None = None
+    notes: list[ClassOverviewNoteInput] = Field(default_factory=list)
+
+
+class ClassOverviewResponse(BaseModel):
+    overview: str
+
+
+class AskNoteSummary(BaseModel):
+    note_id: str
+    title: str
+    summary: str | None = None
+    content: str | None = None
+
+
+class AskRequest(BaseModel):
+    class_name: str
+    class_subtitle: str | None = None
+    recent_notes: list[AskNoteSummary] = Field(default_factory=list)
+    weak_topics: list[str] = Field(default_factory=list)
+    history: list[AskMessage] = Field(default_factory=list)
+    question: str
+
+
+class AskResponse(BaseModel):
+    answer: str
+    memory_trick: str | None = None
+    related_note_ids: list[str] = Field(default_factory=list)
+
+
 # ---------- Attachments ----------
 
 

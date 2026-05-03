@@ -50,7 +50,7 @@ async function enqueue(
 export async function listClasses(): Promise<ClassRow[]> {
   const db = await getDb();
   return (await db.getAllAsync(
-    "select * from classes where deleted_at is null order by name",
+    "select * from classes where deleted_at is null and archived_at is null order by name",
   )) as ClassRow[];
 }
 
@@ -60,22 +60,46 @@ export async function upsertClass(
 ): Promise<ClassRow> {
   const db = await getDb();
   const ts = nowIso();
+  const id = input.id ?? ulid("cls");
+  let overviewText: string | null = null;
+  if (input.overview_text !== undefined) {
+    overviewText = input.overview_text;
+  } else if (input.id) {
+    const ex = (await db.getFirstAsync(
+      "select overview_text from classes where id = ?",
+      [input.id],
+    )) as { overview_text: string | null } | null;
+    overviewText = ex?.overview_text ?? null;
+  }
   const row: ClassRow = {
-    id: input.id ?? ulid("cls"),
+    id,
     name: input.name,
     code: input.code ?? null,
     color: input.color ?? null,
     created_at: input.created_at ?? ts,
     updated_at: ts,
     deleted_at: input.deleted_at ?? null,
+    archived_at: input.archived_at ?? null,
+    overview_text: overviewText,
   };
   await db.runAsync(
-    `insert into classes (id, name, code, color, created_at, updated_at, deleted_at)
-     values (?, ?, ?, ?, ?, ?, ?)
+    `insert into classes (id, name, code, color, created_at, updated_at, deleted_at, archived_at, overview_text)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?)
      on conflict(id) do update set
        name=excluded.name, code=excluded.code, color=excluded.color,
-       updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
-    [row.id, row.name, row.code, row.color, row.created_at, row.updated_at, row.deleted_at],
+       updated_at=excluded.updated_at, deleted_at=excluded.deleted_at,
+       archived_at=excluded.archived_at, overview_text=excluded.overview_text`,
+    [
+      row.id,
+      row.name,
+      row.code,
+      row.color,
+      row.created_at,
+      row.updated_at,
+      row.deleted_at,
+      row.archived_at,
+      row.overview_text,
+    ],
   );
   if (!opts.skipOutbox) await enqueue("classes", row.id, "upsert", row);
   return row;

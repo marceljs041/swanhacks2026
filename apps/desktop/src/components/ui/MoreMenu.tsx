@@ -1,5 +1,5 @@
 import type { FC, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MoreIcon } from "../icons.js";
 
 export interface MoreMenuItem {
@@ -26,40 +26,80 @@ interface Props {
 export const MoreMenu: FC<Props> = ({ items, label = "More actions" }) => {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const [placement, setPlacement] = useState<{ top: number; right: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(null);
+      return;
+    }
+    function update(): void {
+      if (!btnRef.current) return;
+      const r = btnRef.current.getBoundingClientRect();
+      setPlacement({
+        top: r.bottom + 4,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    }
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    function onDoc(e: MouseEvent): void {
+    /** Capture phase so we beat other handlers and close reliably (e.g. note editor layout). */
+    function onOutside(e: PointerEvent): void {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     }
     function onKey(e: KeyboardEvent): void {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("pointerdown", onOutside, true);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("pointerdown", onOutside, true);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
   return (
-    <div className="more-menu" ref={wrapRef}>
+    <div
+      className="more-menu"
+      ref={wrapRef}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <button
+        ref={btnRef}
         type="button"
-        className="header-action"
+        className="more-menu-trigger"
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
       >
-        <MoreIcon size={16} />
+        <MoreIcon size={18} />
       </button>
-      {open && (
-        <div className="more-menu-list" role="menu">
+      {open && placement && (
+        <div
+          className="more-menu-list"
+          role="menu"
+          style={{
+            position: "fixed",
+            top: placement.top,
+            right: placement.right,
+            zIndex: 450,
+          }}
+        >
           {items.map((it, i) => (
             <button
               key={`${i}-${it.label}`}

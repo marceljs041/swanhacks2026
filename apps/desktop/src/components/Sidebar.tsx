@@ -43,7 +43,7 @@ const SETTINGS_ITEM: NavItem = {
 /** A sub-view counts as "active" if it belongs to the same top-level destination. */
 function isActive(viewKind: View["kind"], itemKey: View["kind"]): boolean {
   if (viewKind === itemKey) return true;
-  if (itemKey === "notes" && viewKind === "note") return true;
+  if (itemKey === "notes" && (viewKind === "note" || viewKind === "allNotes")) return true;
   if (itemKey === "flashcards" && viewKind === "flashcardSet") return true;
   if (itemKey === "quizzes" && viewKind === "quiz") return true;
   return false;

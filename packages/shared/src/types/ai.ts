@@ -65,9 +65,65 @@ export interface SimpleExplainRequest extends NoteContext {
   audience?: "child" | "highschool" | "college";
 }
 
+export interface AskMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AskNoteSummary {
+  note_id: string;
+  title: string;
+  summary?: string | null;
+  /**
+   * The actual note body (markdown). Sent in addition to `summary` so
+   * the model can ground answers in the user's own words even when the
+   * summary is missing or stale. Callers should truncate to a few
+   * thousand characters before sending.
+   */
+  content?: string | null;
+}
+
+/** Class-scoped chat request used by the "Ask AI" screen. */
+export interface AskRequest {
+  class_name: string;
+  class_subtitle?: string | null;
+  recent_notes: AskNoteSummary[];
+  weak_topics: string[];
+  history: AskMessage[];
+  question: string;
+}
+
+export interface AskResponse {
+  /** Plain-text reply (markdown-light) shown in the assistant bubble. */
+  answer: string;
+  /** Optional one-line "memory trick" / mnemonic to render as a callout. */
+  memory_trick?: string | null;
+  /** Subset of the supplied `recent_notes` that informed the answer. */
+  related_note_ids?: string[];
+}
+
 export interface AiHealthResponse {
   ok: boolean;
   model: string | null;
   loaded: boolean;
   context_size: number;
+}
+
+/** One class note for `/ai/class-overview` (body truncated client-side). */
+export interface ClassOverviewNoteInput {
+  note_id: string;
+  title: string;
+  summary?: string | null;
+  content: string;
+}
+
+export interface ClassOverviewRequest {
+  class_name: string;
+  class_subtitle?: string | null;
+  notes: ClassOverviewNoteInput[];
+}
+
+export interface ClassOverviewResponse {
+  /** Single short paragraph, plain text. */
+  overview: string;
 }

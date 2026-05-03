@@ -242,6 +242,47 @@ export const WarningIcon = make(
 
 export const BoltIcon = make(<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />);
 
+export const LeafIcon = make(
+  <>
+    <path d="M20 4c-9 0-15 5-15 12 0 2 .5 3.5 1.5 4.5C8 22 10 21.5 12 20.5c5-2.5 8-7 8-12V4Z" />
+    <path d="M20 4 6 18" />
+  </>,
+);
+
+export const PillarIcon = make(
+  <>
+    <path d="M3 6h18" />
+    <path d="M4 6v12M9 6v12M15 6v12M20 6v12" />
+    <path d="M3 18h18" />
+    <path d="M3 6 5 3h14l2 3" />
+    <path d="M3 18 4.5 21h15L21 18" />
+  </>,
+);
+
+export const GraduationCapIcon = make(
+  <>
+    <path d="M2 9 12 4l10 5-10 5L2 9Z" />
+    <path d="M6 11v4c0 1.6 2.7 3 6 3s6-1.4 6-3v-4" />
+    <path d="M22 9v5" />
+  </>,
+);
+
+export const FileIcon = make(
+  <>
+    <path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+    <path d="M14 3v5h5" />
+  </>,
+);
+
+/** Archive / deactivate — tray with lid */
+export const ArchiveIcon = make(
+  <>
+    <path d="M4 8h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z" />
+    <path d="M3 8V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2" />
+    <path d="M10 12h4" />
+  </>,
+);
+
 export const CloudCheckIcon = make(
   <>
     <path d="M7 18h10a4 4 0 0 0 .9-7.9 6 6 0 0 0-11.8 1.2A4 4 0 0 0 7 18Z" />
@@ -255,6 +296,109 @@ export const CloudOffIcon = make(
     <path d="M7 18h10a4 4 0 0 0 1.6-7.7" />
     <path d="M6 8a6 6 0 0 1 11 1.5" />
     <path d="M5.4 11A4 4 0 0 0 7 18" />
+  </>,
+);
+
+export const StarIcon = make(
+  <path d="m12 4 2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 10.2l5.9-.9L12 4Z" />,
+);
+
+export const VolumeIcon = make(
+  <>
+    <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+    <path d="M16.5 8.5a5 5 0 0 1 0 7" />
+    <path d="M19 6a8.5 8.5 0 0 1 0 12" />
+  </>,
+);
+
+export const PlayIcon = make(
+  <path d="M7 5v14l12-7L7 5Z" />,
+);
+
+export const HeadphonesIcon = make(
+  <>
+    <path d="M4 14a8 8 0 0 1 16 0" />
+    <path d="M4 14v3a2 2 0 0 0 2 2h2v-7H6a2 2 0 0 0-2 2Z" />
+    <path d="M20 14v3a2 2 0 0 1-2 2h-2v-7h2a2 2 0 0 1 2 2Z" />
+  </>,
+);
+
+export const ImportIcon = make(
+  <>
+    <path d="M12 4v10" />
+    <path d="m8 10 4 4 4-4" />
+    <path d="M5 19h14" />
+  </>,
+);
+
+export const BookmarkIcon = make(
+  <path d="M6 4h12v17l-6-4-6 4V4Z" />,
+);
+
+export const TargetIcon = make(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="5" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+  </>,
+);
+
+export const GraphIcon = make(
+  <>
+    <path d="M4 19h16" />
+    <path d="M6 16V9" />
+    <path d="M11 16V5" />
+    <path d="M16 16v-4" />
+  </>,
+);
+
+export const LightningIcon = make(
+  <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />,
+);
+
+export const RestartIcon = make(
+  <>
+    <path d="M4 4v5h5" />
+    <path d="M4 9a8 8 0 1 1 1.5 7" />
+  </>,
+);
+
+export const PinIcon = make(
+  <>
+    <path d="M12 21s-6-5.4-6-11a6 6 0 1 1 12 0c0 5.6-6 11-6 11Z" />
+    <circle cx="12" cy="10" r="2.4" />
+  </>,
+);
+
+export const BellIcon = make(
+  <>
+    <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2H4.5L6 16Z" />
+    <path d="M10 20a2 2 0 0 0 4 0" />
+  </>,
+);
+
+export const LinkIcon = make(
+  <>
+    <path d="M10 14a4 4 0 0 1 0-5.7l3.2-3.2a4 4 0 1 1 5.7 5.7l-1.4 1.4" />
+    <path d="M14 10a4 4 0 0 1 0 5.7l-3.2 3.2a4 4 0 1 1-5.7-5.7L6.5 12" />
+  </>,
+);
+
+export const RepeatIcon = make(
+  <>
+    <path d="M4 11V9a3 3 0 0 1 3-3h11" />
+    <path d="m15 3 3 3-3 3" />
+    <path d="M20 13v2a3 3 0 0 1-3 3H6" />
+    <path d="m9 21-3-3 3-3" />
+  </>,
+);
+
+export const ListIcon = make(
+  <>
+    <path d="M8 6h12M8 12h12M8 18h12" />
+    <circle cx="4" cy="6" r="1" />
+    <circle cx="4" cy="12" r="1" />
+    <circle cx="4" cy="18" r="1" />
   </>,
 );
 

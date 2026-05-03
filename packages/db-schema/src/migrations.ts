@@ -38,7 +38,137 @@ export const MIGRATIONS: Migration[] = [
     `,
     idempotentAddColumn: true,
   },
+  {
+    version: 3,
+    name: "classes_archived_at",
+    sql: /* sql */ `
+      alter table classes add column archived_at text;
+    `,
+    idempotentAddColumn: true,
+  },
+  {
+    version: 4,
+    name: "classes_overview_text",
+    sql: /* sql */ `
+      alter table classes add column overview_text text;
+    `,
+    idempotentAddColumn: true,
+  },
+  /**
+   * Quiz feature buildout: a string of additive `alter table` statements
+   * followed by a new `quiz_sessions` table and supporting indexes.
+   *
+   * We split each `alter table … add column …` into its own migration
+   * entry rather than batching them, because the runner stops at the
+   * first failure and the `idempotentAddColumn` swallow only covers a
+   * single statement. Existing devices apply each alter in order; fresh
+   * installs (where `CREATE_TABLES_SQL` already includes the columns)
+   * see "duplicate column name" errors that are swallowed one by one.
+   */
+  ...quizBuildoutMigrations(),
+  /**
+   * Calendar feature: introduces the rich `calendar_events` and
+   * `checklist_items` tables, plus supporting indexes. Idempotent
+   * `create table if not exists` so fresh installs (where
+   * `CREATE_TABLES_SQL` already includes these tables) skip safely.
+   */
+  {
+    version: 23,
+    name: "calendar_events",
+    sql: /* sql */ `
+      create table if not exists calendar_events (
+        id text primary key,
+        title text not null,
+        type text not null,
+        class_id text,
+        note_id text,
+        quiz_id text,
+        flashcard_set_id text,
+        study_plan_id text,
+        description text,
+        location text,
+        start_at text not null,
+        end_at text not null,
+        all_day integer not null default 0,
+        color text,
+        tags_json text not null default '[]',
+        reminder_at text,
+        source_type text not null default 'manual',
+        status text not null default 'scheduled',
+        recurrence_json text,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text,
+        sync_version integer not null default 1
+      );
+      create table if not exists checklist_items (
+        id text primary key,
+        event_id text not null,
+        label text not null,
+        completed integer not null default 0,
+        position integer,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+      create index if not exists idx_calendar_events_start_at on calendar_events(start_at) where deleted_at is null;
+      create index if not exists idx_calendar_events_class_id on calendar_events(class_id) where deleted_at is null;
+      create index if not exists idx_calendar_events_study_plan_id on calendar_events(study_plan_id) where deleted_at is null;
+      create index if not exists idx_checklist_items_event_id on checklist_items(event_id) where deleted_at is null;
+    `,
+  },
 ];
+
+/**
+ * Generates the sequential migration entries for the v5 quiz buildout.
+ * Lives next to `MIGRATIONS` (instead of inline) so the version numbers
+ * stay easy to read at a glance.
+ */
+function quizBuildoutMigrations(): Migration[] {
+  let v = 5;
+  const addColumn = (table: string, name: string, type: string): Migration => ({
+    version: v++,
+    name: `${table}_${name}`,
+    sql: /* sql */ `alter table ${table} add column ${name} ${type};`,
+    idempotentAddColumn: true,
+  });
+  const out: Migration[] = [
+    addColumn("quizzes", "class_id", "text"),
+    addColumn("quizzes", "description", "text"),
+    addColumn("quizzes", "difficulty", "text not null default 'medium'"),
+    addColumn("quizzes", "status", "text not null default 'new'"),
+    addColumn("quizzes", "source_type", "text not null default 'note'"),
+    addColumn("quizzes", "source_ids_json", "text"),
+    addColumn("quizzes", "weak_topics_json", "text"),
+    addColumn("quizzes", "tags_json", "text"),
+    addColumn("quiz_questions", "topic", "text"),
+    addColumn("quiz_questions", "hint", "text"),
+    addColumn("quiz_questions", "source_note_id", "text"),
+    addColumn("quiz_questions", "position", "integer"),
+    addColumn("quiz_attempts", "started_at", "text"),
+    addColumn("quiz_attempts", "finished_at", "text"),
+    addColumn("quiz_attempts", "completed", "integer not null default 1"),
+    addColumn("quiz_attempts", "weak_topics_json", "text"),
+    addColumn("quiz_attempts", "time_spent_seconds", "integer"),
+    {
+      version: v++,
+      name: "quiz_sessions",
+      sql: /* sql */ `
+        create table if not exists quiz_sessions (
+          quiz_id text primary key,
+          current_index integer not null default 0,
+          answers_json text not null default '{}',
+          started_at text not null,
+          updated_at text not null,
+          foreign key (quiz_id) references quizzes(id)
+        );
+        create index if not exists idx_quizzes_class_id on quizzes(class_id) where deleted_at is null;
+        create index if not exists idx_quiz_attempts_quiz_id on quiz_attempts(quiz_id);
+      `,
+    },
+  ];
+  return out;
+}
 
 export const ENSURE_MIGRATION_TABLE_SQL = /* sql */ `
 create table if not exists schema_migrations (

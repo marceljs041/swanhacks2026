@@ -21,6 +21,10 @@ import {
   upsertStudyPlan,
   upsertStudyTask,
 } from "../db/repositories.js";
+import {
+  upsertEvent as upsertCalendarEvent,
+  upsertChecklistItem,
+} from "../db/calendar.js";
 
 export const desktopSyncDb: SyncDb = {
   async getDeviceId() {
@@ -86,6 +90,12 @@ export const desktopSyncDb: SyncDb = {
         return "applied";
       case "study_tasks":
         await upsertStudyTask(p as any, skipOutbox);
+        return "applied";
+      case "calendar_events":
+        await upsertCalendarEvent(p as any, skipOutbox);
+        return "applied";
+      case "checklist_items":
+        await upsertChecklistItem(p as any, skipOutbox);
         return "applied";
       default:
         return "skipped";

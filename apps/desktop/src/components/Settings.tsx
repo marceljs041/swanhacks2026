@@ -10,7 +10,6 @@ import { CheckIcon, SettingsIcon } from "./icons.js";
 
 export const Settings: FC = () => {
   const sidecarLoaded = useApp((s) => s.sidecarLoaded);
-  const sidecarModel = useApp((s) => s.sidecarModel);
   const syncStatus = useApp((s) => s.syncStatus);
   const theme = useApp((s) => s.theme);
   const setTheme = useApp((s) => s.setTheme);
@@ -74,18 +73,14 @@ export const Settings: FC = () => {
             </div>
           </Card>
 
-          <Card title="Local AI">
+          <Card title="Learning assistant">
             <div style={{ fontSize: 13 }}>
               {sidecarLoaded ? (
-                <>
-                  Loaded: <strong>{sidecarModel}</strong>
-                </>
+                <span>Ready to help with summaries, quizzes, and questions in your notes.</span>
               ) : (
                 <span style={{ color: "var(--color-textMuted)" }}>
-                  Local GGUF model is not loaded (sidecar may still be running). The app falls back
-                  to the cloud API for AI. Run <code>pnpm desktop fetch-model</code> from the repo
-                  root, or set <code>STUDYNEST_GEMMA_MODEL_PATH</code> to an absolute path, then
-                  restart the desktop app.
+                  The assistant is still starting. If this lasts more than a minute, fully quit the app
+                  and open it again.
                 </span>
               )}
             </div>
@@ -94,9 +89,6 @@ export const Settings: FC = () => {
           <Card title="Sync">
             <div style={{ fontSize: 13 }}>
               Status: <span className={`pill ${syncStatus}`}><span className="dot" /> {syncStatus}</span>
-            </div>
-            <div style={{ marginTop: 8, color: "var(--color-textMuted)", fontSize: 12 }}>
-              Cloud API: <code>{CLOUD_API_BASE_URL}</code>
             </div>
           </Card>
 

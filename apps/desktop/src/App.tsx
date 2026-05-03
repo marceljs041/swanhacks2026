@@ -2,9 +2,12 @@ import { useEffect } from "react";
 import { SyncWorker } from "@studynest/sync";
 import { Sidebar } from "./components/Sidebar.js";
 import { NotesList } from "./components/NotesList.js";
+import { AllNotes } from "./components/AllNotes.js";
 import { NoteEditor } from "./components/NoteEditor.js";
 import { Home } from "./components/Home.js";
 import { Classes } from "./components/Classes.js";
+import { ClassView } from "./components/ClassView.js";
+import { ClassAsk } from "./components/ClassAsk.js";
 import { FlashcardsHub } from "./components/FlashcardsHub.js";
 import { QuizzesHub } from "./components/QuizzesHub.js";
 import { Flashcards } from "./components/Flashcards.js";
@@ -31,6 +34,10 @@ export function App() {
   const onboardedAt = useApp((s) => s.profile.onboardedAt);
   const setSyncStatus = useApp((s) => s.setSyncStatus);
   const setSidecar = useApp((s) => s.setSidecar);
+  const classesDetailPanelOpen = useApp((s) => s.classesDetailPanelOpen);
+  const flashcardsDetailPanelOpen = useApp((s) => s.flashcardsDetailPanelOpen);
+  const quizzesDetailPanelOpen = useApp((s) => s.quizzesDetailPanelOpen);
+  const calendarDetailPanelOpen = useApp((s) => s.calendarDetailPanelOpen);
 
   useEffect(() => {
     if (workerStarted) return;
@@ -48,9 +55,9 @@ export function App() {
     const pollSidecar = async (): Promise<void> => {
       try {
         const s = await window.studynest?.sidecarStatus();
-        if (s) setSidecar(!!s.loaded, (s.model as string | null) ?? null);
+        if (s) setSidecar(!!s.loaded);
       } catch {
-        setSidecar(false, null);
+        setSidecar(false);
       }
     };
     void pollSidecar();
@@ -62,9 +69,18 @@ export function App() {
     };
   }, [setSyncStatus, setSidecar]);
 
-  // The note editor renders its own right panel (AI actions + summary),
-  // so we suppress the global one for that view.
-  const showRightPanel = view.kind !== "note";
+  // The note editor, Classes, Flashcards, and Quizzes screens render their
+  // own third column (detail rail vs global widgets). Calendar embeds
+  // `<RightPanel calendarSwap />` when nothing is selected — same pattern
+  // as Classes — so we suppress App-level RightPanel for calendar too.
+  const showRightPanel =
+    view.kind !== "note" &&
+    view.kind !== "classes" &&
+    view.kind !== "flashcards" &&
+    view.kind !== "flashcardSet" &&
+    view.kind !== "quizzes" &&
+    view.kind !== "quiz" &&
+    view.kind !== "calendar";
 
   if (!onboardedAt) {
     return (
@@ -75,8 +91,36 @@ export function App() {
     );
   }
 
+  // The note editor and the Classes *detail* column need a wider third
+  // track; Home / Notes / Classes (global right panel) use the default
+  // 304px right column.
+  const isNoteView = view.kind === "note";
+  const isClassesDetailWide = view.kind === "classes" && classesDetailPanelOpen;
+  const isFlashcardsDetailWide =
+    view.kind === "flashcardSet" ||
+    (view.kind === "flashcards" && flashcardsDetailPanelOpen);
+  // Quizzes use the wider third column whenever a quiz is actively
+  // being taken / reviewed, OR when a hub card is selected (rail open).
+  const isQuizzesDetailWide =
+    view.kind === "quiz" ||
+    (view.kind === "quizzes" && quizzesDetailPanelOpen);
+  // Calendar: default third column is the global widgets (304px). When an
+  // event is selected, EventDetailRail swaps in with the wider note-wide grid.
+  const isCalendarDetailWide =
+    view.kind === "calendar" && calendarDetailPanelOpen;
+
   return (
-    <div className={`app${macCustomChrome ? " with-custom-titlebar" : ""}`}>
+    <div
+      className={`app${macCustomChrome ? " with-custom-titlebar" : ""}${
+        isNoteView ||
+        isClassesDetailWide ||
+        isFlashcardsDetailWide ||
+        isQuizzesDetailWide ||
+        isCalendarDetailWide
+          ? " note-wide"
+          : ""
+      }`}
+    >
       {macCustomChrome && <div className="app-titlebar" aria-hidden />}
       <Sidebar />
       {renderMain(view)}
@@ -89,12 +133,15 @@ function renderMain(view: ReturnType<typeof useApp.getState>["view"]) {
   switch (view.kind) {
     case "home":          return <Home />;
     case "notes":         return <NotesList />;
+    case "allNotes":      return <AllNotes />;
     case "note":          return <NoteEditor noteId={view.noteId} />;
     case "classes":       return <Classes />;
+    case "classView":     return <ClassView classId={view.classId} />;
+    case "classAsk":      return <ClassAsk classId={view.classId} />;
     case "flashcards":    return <FlashcardsHub />;
-    case "flashcardSet":  return <Flashcards setId={view.setId} />;
+    case "flashcardSet":  return <Flashcards setId={view.setId} mode={view.mode} />;
     case "quizzes":       return <QuizzesHub />;
-    case "quiz":          return <Quiz quizId={view.quizId} />;
+    case "quiz":          return <Quiz quizId={view.quizId} mode={view.mode ?? "take"} />;
     case "calendar":      return <Calendar />;
     case "settings":      return <Settings />;
   }

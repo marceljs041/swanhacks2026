@@ -39,6 +39,8 @@ SYNCABLE_TABLES = (
     "quiz_attempts",
     "study_plans",
     "study_tasks",
+    "calendar_events",
+    "checklist_items",
     "xp_events",
 )
 

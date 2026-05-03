@@ -43,9 +43,7 @@ export const Card: FC<Props> = ({
               <MoreIcon size={16} />
             </button>
           ) : action ? (
-            <div className="header-action" style={{ width: "auto", padding: "0 4px" }}>
-              {action}
-            </div>
+            <div className="header-action-wrap">{action}</div>
           ) : null}
         </div>
       )}

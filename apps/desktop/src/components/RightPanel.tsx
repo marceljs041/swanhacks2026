@@ -25,6 +25,7 @@ import {
   saveTimerDurations,
   type TimerDurations,
 } from "../lib/timerPrefs.js";
+import { withViewTransition } from "../lib/viewTransition.js";
 import {
   currentStreak,
   listClasses,
@@ -57,7 +58,20 @@ import {
 /* draggable tiles; Save commits, Cancel discards.                   */
 /* ---------------------------------------------------------------- */
 
-export const RightPanel: FC = () => {
+interface RightPanelProps {
+  /** Participates in View Transitions when swapped with `ClassDetailPanel` on Classes. */
+  classesSwap?: boolean;
+  /** Participates in View Transitions when swapped with `DeckDetailRail` on Flashcards. */
+  flashcardsSwap?: boolean;
+  /** Participates in View Transitions when swapped with `EventDetailRail` on Calendar. */
+  calendarSwap?: boolean;
+}
+
+export const RightPanel: FC<RightPanelProps> = ({
+  classesSwap,
+  flashcardsSwap,
+  calendarSwap,
+}) => {
   const activeIds = useApp((s) => s.rightPanelWidgets);
   const setActive = useApp((s) => s.setRightPanelWidgets);
 
@@ -112,7 +126,11 @@ export const RightPanel: FC = () => {
   }
 
   return (
-    <aside className="right-panel">
+    <aside
+      className={`right-panel${classesSwap ? " right-panel--classes-swap" : ""}${
+        flashcardsSwap ? " right-panel--flashcards-swap" : ""
+      }${calendarSwap ? " right-panel--calendar-swap" : ""}`}
+    >
       <RightPanelHeader
         editing={editing}
         canSave={draft.length > 0 || valid.length === 0}
@@ -139,30 +157,6 @@ export const RightPanel: FC = () => {
     </aside>
   );
 };
-
-/* ---- Animation helpers ------------------------------------------- */
-
-type ViewTransitionDoc = Document & {
-  startViewTransition?: (cb: () => void) => unknown;
-};
-
-/**
- * Wrap a state update so the browser cross-fades the panel between its
- * before/after DOM. No-op on browsers without the View Transitions API
- * — there we simply call the update synchronously.
- */
-function withViewTransition(fn: () => void): void {
-  if (typeof document === "undefined") {
-    fn();
-    return;
-  }
-  const doc = document as ViewTransitionDoc;
-  if (typeof doc.startViewTransition === "function") {
-    doc.startViewTransition(fn);
-  } else {
-    fn();
-  }
-}
 
 /* ---- Widget registry --------------------------------------------- */
 
@@ -1214,7 +1208,6 @@ function QuickCaptureCard(): JSX.Element {
 
 function AiQuickPromptsCard(): JSX.Element {
   const sidecarLoaded = useApp((s) => s.sidecarLoaded);
-  const sidecarModel = useApp((s) => s.sidecarModel);
   const setView = useApp((s) => s.setView);
   const setSelectedNote = useApp((s) => s.setSelectedNote);
   const [recent, setRecent] = useState<NoteRow | null>(null);
@@ -1237,13 +1230,9 @@ function AiQuickPromptsCard(): JSX.Element {
 
   return (
     <Card title="AI Shortcuts" icon={<SparklesIcon size={16} />} className="ai-card">
-      {sidecarLoaded ? (
-        <p className="card-subtitle">
-          Local model: <strong>{sidecarModel ?? "ready"}</strong>
-        </p>
-      ) : (
+      {!sidecarLoaded && (
         <p className="card-subtitle muted">
-          Local model not loaded. Load it from Settings to enable offline AI.
+          The learning assistant is still starting. Try again in a moment.
         </p>
       )}
       <div className="ai-actions">

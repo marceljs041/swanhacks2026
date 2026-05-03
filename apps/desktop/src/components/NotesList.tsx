@@ -13,7 +13,6 @@ import {
   notesUpdatedSince,
   notesWithAttachmentType,
   recordXp,
-  searchNotes,
   softDeleteNote,
   unsyncedNotesCount,
   upsertAttachment,
@@ -29,11 +28,13 @@ import { ConfirmDialog } from "./ui/ConfirmDialog.js";
 import { MoreMenu } from "./ui/MoreMenu.js";
 import type { MoreMenuItem } from "./ui/MoreMenu.js";
 import { AudioRecorderModal } from "./AudioRecorderModal.js";
+import { HeroSearch } from "./HeroSearch.js";
 import {
   ArrowRightIcon,
   BoltIcon,
   CalendarIcon,
   CameraIcon,
+  ClockIcon,
   CloudOffIcon,
   EyeIcon,
   FlashcardIcon,
@@ -41,7 +42,6 @@ import {
   NoteIcon,
   PencilIcon,
   QuizIcon,
-  SearchIcon,
   SparklesIcon,
   TrashIcon,
   UploadIcon,
@@ -86,11 +86,10 @@ export const NotesList: FC = () => {
   const setNotes = useApp((s) => s.setNotes);
   const classes = useApp((s) => s.classes);
   const setClasses = useApp((s) => s.setClasses);
+  const selectedClassId = useApp((s) => s.selectedClassId);
+  const setSelectedClassFilter = useApp((s) => s.setSelectedClass);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<NoteRow[] | null>(null);
   const [collectionFilter, setCollectionFilter] = useState<CollectionFilterKey>(null);
-  const [showAll, setShowAll] = useState(false);
   const [counts, setCounts] = useState<CollectionCounts>({
     thisWeek: 0,
     examPrep: 0,
@@ -174,19 +173,6 @@ export const NotesList: FC = () => {
     void reload();
   }, [reload]);
 
-  // Live search overrides the collection filter when the user types.
-  useEffect(() => {
-    const t = searchQuery.trim();
-    if (!t) {
-      setSearchResults(null);
-      return;
-    }
-    const handle = setTimeout(async () => {
-      setSearchResults(await searchNotes(t, 50));
-    }, 120);
-    return () => clearTimeout(handle);
-  }, [searchQuery]);
-
   const classMap = useMemo(() => {
     const m = new Map<string, ClassRow>();
     for (const c of classes) m.set(c.id, c);
@@ -194,39 +180,49 @@ export const NotesList: FC = () => {
   }, [classes]);
 
   const filteredNotes = useMemo(() => {
-    if (searchResults) return searchResults;
-    if (!collectionFilter) return notes;
+    // Class focus is set when the user clicks "Open Class" from the
+    // Classes screen — narrow the list before the smart-collection
+    // filter runs so e.g. "Exam Prep" intersects with the class focus.
+    const classScoped = selectedClassId
+      ? notes.filter((n) => n.class_id === selectedClassId)
+      : notes;
+    if (!collectionFilter) return classScoped;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const weekAgo = new Date(today);
     weekAgo.setDate(weekAgo.getDate() - 7);
     switch (collectionFilter) {
       case "thisWeek":
-        return notes.filter((n) => new Date(n.updated_at) >= weekAgo);
+        return classScoped.filter((n) => new Date(n.updated_at) >= weekAgo);
       case "examPrep":
-        return notes.filter((n) => /exam/i.test(n.tags_json));
+        return classScoped.filter((n) => /exam/i.test(n.tags_json));
       case "audio":
-        return notes.filter((n) => audioNoteIds.has(n.id));
+        return classScoped.filter((n) => audioNoteIds.has(n.id));
       case "scans":
-        return notes.filter((n) => scanNoteIds.has(n.id));
+        return classScoped.filter((n) => scanNoteIds.has(n.id));
       case "needsReview":
-        return notes.filter((n) => new Date(n.updated_at) < weekAgo);
+        return classScoped.filter((n) => new Date(n.updated_at) < weekAgo);
       case "needsTools":
-        return notes.filter((n) => needsToolsIds.has(n.id));
+        return classScoped.filter((n) => needsToolsIds.has(n.id));
       case "audioPending":
-        return notes.filter((n) => pendingTranscriptIds.has(n.id));
+        return classScoped.filter((n) => pendingTranscriptIds.has(n.id));
       default:
-        return notes;
+        return classScoped;
     }
   }, [
     notes,
+    selectedClassId,
     collectionFilter,
-    searchResults,
     audioNoteIds,
     scanNoteIds,
     needsToolsIds,
     pendingTranscriptIds,
   ]);
+
+  const activeClass = useMemo(
+    () => (selectedClassId ? classMap.get(selectedClassId) ?? null : null),
+    [selectedClassId, classMap],
+  );
 
   async function handleDelete(): Promise<void> {
     if (!confirmDelete) return;
@@ -235,27 +231,29 @@ export const NotesList: FC = () => {
     await reload();
   }
 
-  const isEmpty = notes.length === 0 && !searchResults;
+  const isEmpty = notes.length === 0;
 
   return (
     <main className="main">
-      <div className="topbar">
-        <label className="search">
-          <span className="search-icon"><SearchIcon size={16} /></span>
-          <input
-            type="search"
-            placeholder="Search notes, classes, or topics..."
-            aria-label="Search notes"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </label>
-      </div>
-
       <div className="main-inner">
         <NotesHero />
 
         <NotesQuickActions onCreated={() => void reload()} />
+
+        {activeClass && (
+          <div className="notes-class-scope" role="status">
+            <span className="notes-class-scope-label">
+              Filtered to <strong>{activeClass.name}</strong>
+            </span>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setSelectedClassFilter(null)}
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
 
         {isEmpty ? (
           <NotesEmptyState onCreated={() => void reload()} />
@@ -268,7 +266,6 @@ export const NotesList: FC = () => {
                 active={collectionFilter}
                 onPick={(key) => {
                   setCollectionFilter((curr) => (curr === key ? null : key));
-                  setShowAll(false);
                 }}
               />
             </div>
@@ -277,14 +274,8 @@ export const NotesList: FC = () => {
               <RecentNotesCard
                 notes={filteredNotes}
                 classMap={classMap}
-                filterLabel={filterLabel(collectionFilter, searchQuery)}
-                onClearFilter={() => {
-                  setCollectionFilter(null);
-                  setSearchQuery("");
-                }}
-                showAll={showAll}
-                onShowAll={() => setShowAll(true)}
-                onShowLess={() => setShowAll(false)}
+                filterLabel={filterLabel(collectionFilter)}
+                onClearFilter={() => setCollectionFilter(null)}
                 onDelete={(n) => setConfirmDelete(n)}
               />
               <AiReadyQueueCard queue={aiQueue} />
@@ -294,7 +285,6 @@ export const NotesList: FC = () => {
               counts={attention}
               onPick={(key) => {
                 setCollectionFilter((curr) => (curr === key ? null : key));
-                setShowAll(false);
               }}
             />
           </>
@@ -382,11 +372,7 @@ async function buildAiQueue(
   return out;
 }
 
-function filterLabel(
-  filter: CollectionFilterKey,
-  searchQuery: string,
-): string | null {
-  if (searchQuery.trim()) return `Results for "${searchQuery.trim()}"`;
+function filterLabel(filter: CollectionFilterKey): string | null {
   switch (filter) {
     case "thisWeek":     return "This Week";
     case "examPrep":     return "Exam Prep";
@@ -401,17 +387,26 @@ function filterLabel(
 
 /* ---- hero -------------------------------------------------------- */
 
+/**
+ * Mirrors the Home dashboard hero (`.hero` / `.hero-main` / `.hero-illustration`)
+ * so the two screens feel like the same product. The shared `<HeroSearch />`
+ * lives at the top of the left column and the page title sits below it,
+ * matching the greeting block used on Home.
+ */
 const NotesHero: FC = () => (
-  <section className="notes-hero">
-    <div className="notes-hero-copy">
-      <h1>Notes</h1>
-      <p>Your class brain, organized and ready to study.</p>
+  <section className="hero">
+    <div className="hero-main">
+      <HeroSearch />
+      <div className="hero-greeting">
+        <h1 className="hero-headline">Notes</h1>
+        <p>Your class brain, organized and ready to study.</p>
+      </div>
     </div>
-    <div className="notes-hero-art" aria-hidden>
+    <div className="hero-illustration" aria-hidden>
       <img
+        className="hero-illustration-img"
         src={BRAND_HERO_URL}
         alt=""
-        className="notes-hero-img"
         decoding="async"
       />
     </div>
@@ -420,18 +415,19 @@ const NotesHero: FC = () => (
 
 /* ---- quick actions ----------------------------------------------- */
 
+type QuickActionVariant = "new-note" | "record-audio" | "scan-board" | "upload-file";
+
 interface QAProps {
+  variant: QuickActionVariant;
   title: string;
   sub: string;
   icon: ReactNode;
-  bg: string;
-  fg: string;
   onClick?: () => void;
 }
 
-const QuickActionTile: FC<QAProps> = ({ title, sub, icon, bg, fg, onClick }) => (
-  <button type="button" className="quick-action" onClick={onClick}>
-    <span className="qa-icon" style={{ background: bg, color: fg }}>{icon}</span>
+const QuickActionTile: FC<QAProps> = ({ variant, title, sub, icon, onClick }) => (
+  <button type="button" className={`quick-action quick-action--${variant}`} onClick={onClick}>
+    <span className="qa-icon">{icon}</span>
     <span className="qa-text">
       <span className="qa-title">{title}</span>
       <span className="qa-sub">{sub}</span>
@@ -555,38 +551,34 @@ const NotesQuickActions: FC<{ onCreated: () => void }> = ({ onCreated }) => {
     <>
       <section className="quick-actions">
         <QuickActionTile
+          variant="new-note"
           title="New Note"
           sub="Start writing"
           icon={<PencilIcon size={20} />}
-          bg="var(--color-accentRoseSoft)"
-          fg="var(--color-accentRose)"
           onClick={() => void newNote()}
         />
         <QuickActionTile
+          variant="record-audio"
           title="Record Audio"
           sub="Capture ideas"
           icon={<MicIcon size={20} />}
-          bg="var(--color-accentAmberSoft)"
-          fg="var(--color-accentAmber)"
           onClick={() => {
             setError(null);
             setRecorderOpen(true);
           }}
         />
         <QuickActionTile
+          variant="scan-board"
           title="Scan Board"
           sub="Snap whiteboard"
           icon={<CameraIcon size={20} />}
-          bg="var(--color-accentSkySoft)"
-          fg="var(--color-accentSky)"
           onClick={() => imageRef.current?.click()}
         />
         <QuickActionTile
+          variant="upload-file"
           title="Upload File"
           sub="Add documents"
           icon={<UploadIcon size={20} />}
-          bg="var(--color-accentPeachSoft)"
-          fg="var(--color-accentPeach)"
           onClick={() => fileRef.current?.click()}
         />
       </section>
@@ -645,6 +637,52 @@ function blobToDataUri(blob: Blob): Promise<string> {
 
 /* ---- continue writing ------------------------------------------- */
 
+/** Stacked papers illustration (matches dashboard mock — outline stack + ruled top sheet). */
+const ContinueWritingPapersArt: FC = () => (
+  <svg
+    className="cw-papers-svg"
+    viewBox="0 0 52 56"
+    width={52}
+    height={56}
+    aria-hidden
+  >
+    <rect
+      x="9"
+      y="13"
+      width="36"
+      height="40"
+      rx="3"
+      fill="#FFF8F2"
+      stroke="#E5C9A8"
+      strokeWidth="1.5"
+    />
+    <rect
+      x="5"
+      y="7"
+      width="38"
+      height="42"
+      rx="3"
+      fill="#FFFBF6"
+      stroke="#D9B48C"
+      strokeWidth="1.5"
+    />
+    <rect
+      x="1"
+      y="1"
+      width="40"
+      height="46"
+      rx="4"
+      fill="#FFFCF9"
+      stroke="#C98756"
+      strokeWidth="1.75"
+    />
+    <line x1="9" y1="14" x2="33" y2="14" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="20" x2="31" y2="20" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="26" x2="29" y2="26" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
+    <line x1="9" y1="32" x2="27" y2="32" stroke="#D4A574" strokeWidth="1.15" strokeLinecap="round" />
+  </svg>
+);
+
 const ContinueWritingCard: FC = () => {
   const notes = useApp((s) => s.notes);
   const classes = useApp((s) => s.classes);
@@ -652,33 +690,40 @@ const ContinueWritingCard: FC = () => {
   const setView = useApp((s) => s.setView);
   const last = notes[0];
 
-  const className = useMemo(() => {
-    if (!last?.class_id) return null;
-    return classes.find((c) => c.id === last.class_id)?.name ?? null;
+  const classLabel = useMemo(() => {
+    if (!last?.class_id) return "Unfiled";
+    return classes.find((c) => c.id === last.class_id)?.name ?? "Unfiled";
   }, [last, classes]);
 
   return (
-    <Card title="Continue Writing" icon={<PencilIcon size={18} />}>
+    <Card className="continue-writing-card" title="Continue Writing" icon={<ClockIcon size={18} />}>
       {last ? (
         <div className="continue-writing">
-          <div className="continue-writing-pill">
-            <span className="cw-glyph"><NoteGlyph icon={last.icon} size={22} /></span>
+          <div className="cw-main">
+            <span className="cw-papers" aria-hidden>
+              <ContinueWritingPapersArt />
+            </span>
             <div className="cw-meta">
               <span className="cw-title">{last.title || "Untitled"}</span>
-              {className && <span className="cw-sub">{className}</span>}
-              <span className="cw-when">Edited {fmtRelative(new Date(last.updated_at))}</span>
+              <span className="cw-sub">{classLabel}</span>
+              <span className="cw-when">
+                <ClockIcon size={12} />
+                Edited {fmtRelative(new Date(last.updated_at))}
+              </span>
             </div>
           </div>
-          <button
-            type="button"
-            className="review-button"
-            onClick={() => {
-              setSelectedNote(last);
-              setView({ kind: "note", noteId: last.id });
-            }}
-          >
-            Open Note <ArrowRightIcon size={14} />
-          </button>
+          <div className="cw-footer">
+            <button
+              type="button"
+              className="cw-open"
+              onClick={() => {
+                setSelectedNote(last);
+                setView({ kind: "note", noteId: last.id });
+              }}
+            >
+              Open Note <ArrowRightIcon size={14} />
+            </button>
+          </div>
         </div>
       ) : (
         <div style={{ color: "var(--color-textMuted)", fontSize: 13 }}>
@@ -703,35 +748,35 @@ const COLLECTION_CHIPS: CollectionChipDef[] = [
   {
     key: "thisWeek",
     label: "This Week",
-    icon: <CalendarIcon size={18} />,
+    icon: <CalendarIcon size={24} />,
     fg: "var(--color-accentSky)",
     bg: "var(--color-accentSkySoft)",
   },
   {
     key: "examPrep",
     label: "Exam Prep",
-    icon: <SparklesIcon size={18} />,
+    icon: <SparklesIcon size={24} />,
     fg: "var(--color-accentRose)",
     bg: "var(--color-accentRoseSoft)",
   },
   {
     key: "audio",
     label: "Audio Notes",
-    icon: <MicIcon size={18} />,
+    icon: <MicIcon size={24} />,
     fg: "var(--color-accentAmber)",
     bg: "var(--color-accentAmberSoft)",
   },
   {
     key: "scans",
     label: "Board Scans",
-    icon: <CameraIcon size={18} />,
+    icon: <CameraIcon size={24} />,
     fg: "var(--color-accentSage)",
     bg: "var(--color-accentSageSoft, var(--color-accentSkySoft))",
   },
   {
     key: "needsReview",
     label: "Needs Review",
-    icon: <EyeIcon size={18} />,
+    icon: <EyeIcon size={24} />,
     fg: "var(--color-accentPeach)",
     bg: "var(--color-accentPeachSoft)",
   },
@@ -752,9 +797,10 @@ const SmartCollectionsCard: FC<{
             key={c.key}
             type="button"
             className={`collection-chip${isActive ? " active" : ""}`}
+            style={{ background: c.bg }}
             onClick={() => onPick(c.key)}
           >
-            <span className="chip-icon" style={{ background: c.bg, color: c.fg }}>
+            <span className="chip-icon" style={{ color: c.fg }}>
               {c.icon}
             </span>
             <span className="chip-label">{c.label}</span>
@@ -773,16 +819,14 @@ const RecentNotesCard: FC<{
   classMap: Map<string, ClassRow>;
   filterLabel: string | null;
   onClearFilter: () => void;
-  showAll: boolean;
-  onShowAll: () => void;
-  onShowLess: () => void;
   onDelete: (n: NoteRow) => void;
-}> = ({ notes, classMap, filterLabel, onClearFilter, showAll, onShowAll, onShowLess, onDelete }) => {
+}> = ({ notes, classMap, filterLabel, onClearFilter, onDelete }) => {
   const setSelectedNote = useApp((s) => s.setSelectedNote);
   const setView = useApp((s) => s.setView);
 
-  const visible = showAll ? notes : notes.slice(0, 5);
-  const hasMore = !showAll && notes.length > 5;
+  // The home Notes screen always shows the 5 most recent — the full
+  // browseable list lives on the dedicated All Notes view.
+  const visible = notes.slice(0, 5);
 
   function open(n: NoteRow): void {
     setSelectedNote(n);
@@ -790,7 +834,23 @@ const RecentNotesCard: FC<{
   }
 
   return (
-    <Card title="Recent Notes" icon={<NoteIcon size={18} />}>
+    <Card
+      className="recent-notes-card"
+      title="Recent Notes"
+      icon={<NoteIcon size={18} />}
+      action={
+        notes.length > 0 ? (
+          <button
+            type="button"
+            className="recent-notes-header-action"
+            onClick={() => setView({ kind: "allNotes" })}
+          >
+            View all notes
+            <ArrowRightIcon size={12} />
+          </button>
+        ) : undefined
+      }
+    >
       {filterLabel && (
         <div className="recent-filter-bar">
           <span className="pill">{filterLabel} · {notes.length}</span>
@@ -804,7 +864,7 @@ const RecentNotesCard: FC<{
           No notes match this view yet.
         </div>
       ) : (
-        <div className={`recent-table${showAll ? " expanded" : ""}`}>
+        <div className="recent-table">
           {visible.map((n) => {
             const cls = n.class_id ? classMap.get(n.class_id) : null;
             const items: MoreMenuItem[] = [
@@ -843,16 +903,6 @@ const RecentNotesCard: FC<{
             );
           })}
         </div>
-      )}
-      {hasMore && (
-        <button type="button" className="plan-link" onClick={onShowAll}>
-          View all notes ({notes.length}) <ArrowRightIcon size={12} />
-        </button>
-      )}
-      {showAll && notes.length > 5 && (
-        <button type="button" className="plan-link" onClick={onShowLess}>
-          Show less
-        </button>
       )}
     </Card>
   );
@@ -981,9 +1031,11 @@ const NeedsAttentionStrip: FC<{
             </span>
             <span className="att-text">
               <span className="att-title">
-                {counts.audioPending} audio {pluralize(counts.audioPending, "recording", "recordings")} need transcription
+                {counts.audioPending} audio {pluralize(counts.audioPending, "recording", "recordings")}
               </span>
-              <span className="att-sub">Convert speech to searchable text</span>
+              <span className="att-sub">
+                {counts.audioPending === 1 ? "Needs transcription" : "Need transcription"}
+              </span>
             </span>
           </button>
           <button
@@ -1002,9 +1054,11 @@ const NeedsAttentionStrip: FC<{
             </span>
             <span className="att-text">
               <span className="att-title">
-                {counts.unsynced} {pluralize(counts.unsynced, "note has", "notes have")} unsynced changes
+                {counts.unsynced} {pluralize(counts.unsynced, "note has", "notes have")}
               </span>
-              <span className="att-sub">We'll retry automatically when online</span>
+              <span className="att-sub">
+                {counts.unsynced > 0 ? "Unsynced changes" : "Synced changes"}
+              </span>
             </span>
           </button>
         </div>

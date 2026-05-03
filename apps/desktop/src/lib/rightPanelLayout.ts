@@ -57,7 +57,7 @@ export const WIDGET_DESCRIPTIONS: Record<WidgetId, string> = {
   dueFlashcards: "How many cards are due plus a quick Review button.",
   todaysPlan: "Just today's tasks with one-click completion.",
   quickCapture: "Add a task or note in one keystroke.",
-  aiQuickPrompts: "Shortcuts to common AI flows when the sidecar is loaded.",
+  aiQuickPrompts: "Shortcuts to common study helpers using the learning assistant.",
   streakHeatmap: "Twelve-week activity heatmap of XP earned per day.",
   classFilter: "Scope deadlines and the calendar to a single class.",
 };

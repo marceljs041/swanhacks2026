@@ -13,6 +13,8 @@ import httpx
 
 from app.config import get_settings
 from app.prompts import (
+    ask_class_prompt,
+    class_overview_prompt,
     flashcards_prompt,
     quiz_prompt,
     simple_explain_prompt,
@@ -146,6 +148,46 @@ async def explain_simple(
         return _fallback_summary(title, content)
 
 
+async def ask_class(
+    *,
+    class_name: str,
+    class_subtitle: str | None,
+    recent_notes: list[dict[str, Any]],
+    weak_topics: list[str],
+    history: list[dict[str, Any]],
+    question: str,
+) -> dict[str, Any]:
+    p = ask_class_prompt(
+        class_name=class_name,
+        class_subtitle=class_subtitle,
+        recent_notes=recent_notes,
+        weak_topics=weak_topics,
+        history=history,
+        question=question,
+    )
+    try:
+        return await _generate_json(p["system"], p["user"])
+    except Exception:
+        return _fallback_ask(class_name, recent_notes, question)
+
+
+async def class_overview(
+    *,
+    class_name: str,
+    class_subtitle: str | None,
+    notes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    p = class_overview_prompt(
+        class_name=class_name,
+        class_subtitle=class_subtitle,
+        notes=notes,
+    )
+    try:
+        return await _generate_json(p["system"], p["user"])
+    except Exception:
+        return _fallback_class_overview(class_name, notes)
+
+
 # ---------- Deterministic fallbacks (so demos never blow up) ----------
 
 
@@ -192,6 +234,92 @@ def _fallback_quiz(title: str, content: str, count: int) -> dict[str, Any]:
             }
         ]
     return {"questions": questions}
+
+
+def _fallback_class_overview(
+    class_name: str,
+    notes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Offline-safe stitch from note snippets when model/cloud are unavailable."""
+    if not notes:
+        return {
+            "overview": (
+                f"Add notes to {class_name} to generate an overview — "
+                "there's nothing to synthesize yet."
+            )
+        }
+    chunks: list[str] = []
+    for n in notes[:8]:
+        title = (n.get("title") or "Note").strip()
+        snippet = (n.get("summary") or "").strip()
+        if not snippet:
+            body = (n.get("content") or "").strip()
+            if body:
+                snippet = _first_sentences(body, 2)
+        if snippet:
+            chunks.append(f"{title}: {snippet}")
+    text = " ".join(chunks)
+    if not text.strip():
+        return {
+            "overview": (
+                f"Your {class_name} notes don't have readable content yet — "
+                "add text to a note and try again."
+            )
+        }
+    if len(text) > 720:
+        text = text[:717].rsplit(" ", 1)[0] + "…"
+    return {"overview": text}
+
+
+def _fallback_ask(
+    class_name: str,
+    recent_notes: list[dict[str, Any]],
+    question: str,
+) -> dict[str, Any]:
+    """Last-resort answer when no cloud provider is configured AND the
+    local model isn't available. Never invents content about the class —
+    just echoes what the user has actually written down so the UI stays
+    consistent with the strict-grounding contract of the real prompt."""
+
+    # Prefer notes that have a summary; if none, fall back to a snippet
+    # of the raw content. Either way, only quote the user's own words.
+    refs: list[dict[str, Any]] = []
+    bullets: list[str] = []
+    for n in recent_notes:
+        title = n.get("title", "note")
+        snippet = (n.get("summary") or "").strip()
+        if not snippet:
+            body = (n.get("content") or "").strip()
+            if body:
+                snippet = body[:240].replace("\n", " ").strip()
+                if len(body) > 240:
+                    snippet += "…"
+        if snippet:
+            refs.append(n)
+            bullets.append(f"- From “{title}” ({n.get('note_id', '?')}): {snippet}")
+        if len(refs) >= 3:
+            break
+
+    if bullets:
+        answer = (
+            f"Here is what your {class_name} notes say so far — I can only use "
+            "what you have written, not guess beyond it:\n\n"
+            + "\n".join(bullets)
+            + "\n\nIf that does not answer your question, add more detail in a note and ask again."
+        )
+    else:
+        answer = (
+            f"I don't have any notes attached for {class_name} yet, so I "
+            "can't ground an answer for you. Add a note (or summarize an "
+            "existing one) for this class and ask again — I'll only "
+            "answer from your own material.\n\n"
+            f"Your question was: “{question.strip()}”."
+        )
+    return {
+        "answer": answer,
+        "memory_trick": None,
+        "related_note_ids": [n.get("note_id") for n in refs if n.get("note_id")],
+    }
 
 
 def _fallback_study_plan(notes: list[dict[str, Any]], days: int) -> dict[str, Any]:

@@ -15,7 +15,9 @@ create table if not exists classes (
   color text,
   created_at text not null,
   updated_at text not null,
-  deleted_at text
+  deleted_at text,
+  archived_at text,
+  overview_text text
 );
 
 create table if not exists notes (
@@ -80,11 +82,20 @@ create table if not exists flashcards (
 create table if not exists quizzes (
   id text primary key,
   note_id text,
+  class_id text,
   title text not null,
+  description text,
+  difficulty text not null default 'medium',
+  status text not null default 'new',
+  source_type text not null default 'note',
+  source_ids_json text,
+  weak_topics_json text,
+  tags_json text,
   created_at text not null,
   updated_at text not null,
   deleted_at text,
-  foreign key (note_id) references notes(id)
+  foreign key (note_id) references notes(id),
+  foreign key (class_id) references classes(id)
 );
 
 create table if not exists quiz_questions (
@@ -95,6 +106,10 @@ create table if not exists quiz_questions (
   options_json text,
   correct_answer text not null,
   explanation text,
+  topic text,
+  hint text,
+  source_note_id text,
+  position integer,
   created_at text not null,
   updated_at text not null,
   deleted_at text,
@@ -107,7 +122,21 @@ create table if not exists quiz_attempts (
   score integer not null,
   total integer not null,
   answers_json text not null,
+  started_at text,
+  finished_at text,
+  completed integer not null default 1,
+  weak_topics_json text,
+  time_spent_seconds integer,
   created_at text not null,
+  foreign key (quiz_id) references quizzes(id)
+);
+
+create table if not exists quiz_sessions (
+  quiz_id text primary key,
+  current_index integer not null default 0,
+  answers_json text not null default '{}',
+  started_at text not null,
+  updated_at text not null,
   foreign key (quiz_id) references quizzes(id)
 );
 
@@ -142,6 +171,49 @@ create table if not exists xp_events (
   action text not null,
   points integer not null,
   created_at text not null
+);
+
+create table if not exists calendar_events (
+  id text primary key,
+  title text not null,
+  type text not null,
+  class_id text,
+  note_id text,
+  quiz_id text,
+  flashcard_set_id text,
+  study_plan_id text,
+  description text,
+  location text,
+  start_at text not null,
+  end_at text not null,
+  all_day integer not null default 0,
+  color text,
+  tags_json text not null default '[]',
+  reminder_at text,
+  source_type text not null default 'manual',
+  status text not null default 'scheduled',
+  recurrence_json text,
+  created_at text not null,
+  updated_at text not null,
+  deleted_at text,
+  sync_version integer not null default 1,
+  foreign key (class_id) references classes(id),
+  foreign key (note_id) references notes(id),
+  foreign key (quiz_id) references quizzes(id),
+  foreign key (flashcard_set_id) references flashcard_sets(id),
+  foreign key (study_plan_id) references study_plans(id)
+);
+
+create table if not exists checklist_items (
+  id text primary key,
+  event_id text not null,
+  label text not null,
+  completed integer not null default 0,
+  position integer,
+  created_at text not null,
+  updated_at text not null,
+  deleted_at text,
+  foreign key (event_id) references calendar_events(id)
 );
 
 create table if not exists sync_outbox (
@@ -179,7 +251,13 @@ create index if not exists idx_attachments_note_id on attachments(note_id) where
 create index if not exists idx_flashcards_set_id on flashcards(set_id) where deleted_at is null;
 create index if not exists idx_flashcards_due_at on flashcards(due_at) where deleted_at is null;
 create index if not exists idx_quiz_questions_quiz_id on quiz_questions(quiz_id) where deleted_at is null;
+create index if not exists idx_quizzes_class_id on quizzes(class_id) where deleted_at is null;
+create index if not exists idx_quiz_attempts_quiz_id on quiz_attempts(quiz_id);
 create index if not exists idx_study_tasks_scheduled_for on study_tasks(scheduled_for) where deleted_at is null;
+create index if not exists idx_calendar_events_start_at on calendar_events(start_at) where deleted_at is null;
+create index if not exists idx_calendar_events_class_id on calendar_events(class_id) where deleted_at is null;
+create index if not exists idx_calendar_events_study_plan_id on calendar_events(study_plan_id) where deleted_at is null;
+create index if not exists idx_checklist_items_event_id on checklist_items(event_id) where deleted_at is null;
 create index if not exists idx_xp_events_created_at on xp_events(created_at);
 create index if not exists idx_sync_outbox_unsynced on sync_outbox(created_at) where synced_at is null;
 `;
@@ -201,8 +279,11 @@ export const SYNCABLE_ENTITIES = [
   "quizzes",
   "quiz_questions",
   "quiz_attempts",
+  "quiz_sessions",
   "study_plans",
   "study_tasks",
+  "calendar_events",
+  "checklist_items",
   "xp_events",
 ] as const;
 
@@ -220,7 +301,10 @@ export const APPLY_ORDER: SyncableEntity[] = [
   "quizzes",
   "quiz_questions",
   "quiz_attempts",
+  "quiz_sessions",
   "study_plans",
   "study_tasks",
+  "calendar_events",
+  "checklist_items",
   "xp_events",
 ];

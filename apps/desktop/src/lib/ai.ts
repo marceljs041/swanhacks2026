@@ -1,6 +1,10 @@
 import {
-  CLOUD_API_BASE_URL,
   LOCAL_AI_BASE_URL,
+  type AskMessage,
+  type AskNoteSummary,
+  type AskResponse,
+  type ClassOverviewRequest,
+  type ClassOverviewResponse,
   type FlashcardsResponse,
   type QuizResponse,
   type StudyPlanResponse,
@@ -19,7 +23,8 @@ async function localBase(): Promise<string> {
   return _localBase;
 }
 
-async function tryLocal<T>(path: string, body: unknown): Promise<T> {
+/** Desktop uses only the bundled local assistant — no remote AI fallback. */
+async function localOnly<T>(path: string, body: unknown): Promise<T> {
   const base = await localBase();
   const res = await fetch(`${base}${path}`, {
     method: "POST",
@@ -31,28 +36,9 @@ async function tryLocal<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function tryCloud<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${CLOUD_API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
-  });
-  if (!res.ok) throw new Error(`cloud ${path} ${res.status}`);
-  return (await res.json()) as T;
-}
-
-async function preferLocal<T>(localPath: string, cloudPath: string, body: unknown): Promise<T> {
-  try {
-    return await tryLocal<T>(localPath, body);
-  } catch {
-    return await tryCloud<T>(cloudPath, body);
-  }
-}
-
 export const ai = {
   async summarize(args: { note_id: string; title: string; content: string }) {
-    return preferLocal<SummaryResponse>("/local-ai/summarize", "/ai/summarize", args);
+    return localOnly<SummaryResponse>("/local-ai/summarize", args);
   },
   async flashcards(args: {
     note_id: string;
@@ -60,13 +46,20 @@ export const ai = {
     content: string;
     count?: number;
   }) {
-    return preferLocal<FlashcardsResponse>("/local-ai/flashcards", "/ai/flashcards", {
+    return localOnly<FlashcardsResponse>("/local-ai/flashcards", {
       count: 8,
       ...args,
     });
   },
-  async quiz(args: { note_id: string; title: string; content: string; count?: number }) {
-    return preferLocal<QuizResponse>("/local-ai/quiz", "/ai/quiz", { count: 5, ...args });
+  async quiz(args: {
+    note_id: string;
+    title: string;
+    content: string;
+    count?: number;
+    /** Restricts question types — server may ignore unknown values. */
+    types?: Array<"multiple_choice" | "true_false" | "short_answer">;
+  }) {
+    return localOnly<QuizResponse>("/local-ai/quiz", { count: 5, ...args });
   },
   async studyPlan(args: {
     goal: string;
@@ -74,13 +67,22 @@ export const ai = {
     notes: Array<{ id: string; title: string; summary?: string | null }>;
     days_available?: number;
   }) {
-    return preferLocal<StudyPlanResponse>("/local-ai/study-plan", "/ai/study-plan", args);
+    return localOnly<StudyPlanResponse>("/local-ai/study-plan", args);
   },
   async simpleExplain(args: { note_id: string; title: string; content: string }) {
-    return preferLocal<SummaryResponse>(
-      "/local-ai/simple-explain",
-      "/ai/explain-simple",
-      args,
-    );
+    return localOnly<SummaryResponse>("/local-ai/simple-explain", args);
+  },
+  async ask(args: {
+    class_name: string;
+    class_subtitle?: string | null;
+    recent_notes: AskNoteSummary[];
+    weak_topics: string[];
+    history: AskMessage[];
+    question: string;
+  }) {
+    return localOnly<AskResponse>("/local-ai/ask", args);
+  },
+  async classOverview(args: ClassOverviewRequest) {
+    return localOnly<ClassOverviewResponse>("/local-ai/class-overview", args);
   },
 };
