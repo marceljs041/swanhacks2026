@@ -1,10 +1,12 @@
 import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { BADGE_DEFINITIONS, isBadgeId } from "@studynest/shared";
 import {
   goatUpgradePurchases,
   spendRewardPoints,
   totalRewardPoints,
 } from "../db/repositories.js";
+import { refreshUserBadges } from "../lib/badgesSync.js";
 import { useApp } from "../store.js";
 import { Card } from "./ui/Card.js";
 import { GoatLogo, TrophyIcon } from "./icons.js";
@@ -47,6 +49,7 @@ const GOAT_UPGRADES: GoatUpgrade[] = [
 export const Points: FC = () => {
   const syncStatus = useApp((s) => s.syncStatus);
   const setView = useApp((s) => s.setView);
+  const profileBadges = useApp((s) => s.profile.badges);
   const [points, setPoints] = useState(0);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -63,7 +66,17 @@ export const Points: FC = () => {
 
   useEffect(() => {
     void reload();
+    void refreshUserBadges();
   }, []);
+
+  const unlockedBadgeIds = useMemo(
+    () => new Set(profileBadges.filter(isBadgeId)),
+    [profileBadges],
+  );
+  const earnedBadgeCount = useMemo(
+    () => BADGE_DEFINITIONS.filter((d) => unlockedBadgeIds.has(d.id)).length,
+    [unlockedBadgeIds],
+  );
 
   useEffect(() => {
     if (!notice) return;
@@ -190,6 +203,42 @@ export const Points: FC = () => {
                 );
               })}
             </div>
+          </Card>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Card title="Badges">
+          <div className="badges-settings-head">
+            <span style={{ fontSize: 13, color: "var(--color-textMuted)" }}>
+              {earnedBadgeCount} of {BADGE_DEFINITIONS.length} unlocked — earned from notes, quizzes,
+              flashcards, streaks, and XP.
+            </span>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ flexShrink: 0 }}
+              onClick={() => void refreshUserBadges()}
+            >
+              Refresh progress
+            </button>
+          </div>
+          <ul className="badges-grid" aria-label="All badges">
+            {BADGE_DEFINITIONS.map((b) => {
+              const on = unlockedBadgeIds.has(b.id);
+              return (
+                <li
+                  key={b.id}
+                  className={`badge-tile ${on ? "badge-tile-unlocked" : "badge-tile-locked"}`}
+                >
+                  <span className="badge-tile-emoji" aria-hidden>
+                    {on ? b.emoji : "🔒"}
+                  </span>
+                  <span className="badge-tile-title">{b.title}</span>
+                  <span className="badge-tile-desc">{b.description}</span>
+                </li>
+              );
+            })}
+          </ul>
           </Card>
         </div>
       </div>
