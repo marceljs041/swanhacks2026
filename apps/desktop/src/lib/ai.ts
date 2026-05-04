@@ -15,16 +15,16 @@ import {
   type SummaryResponse,
 } from "@studynest/shared";
 
-let _localBase: string | null = null;
-
 async function localBase(): Promise<string> {
-  if (_localBase) return _localBase;
-  if (typeof window !== "undefined" && window.studynest?.sidecarBaseUrl) {
-    _localBase = await window.studynest.sidecarBaseUrl();
-    return _localBase;
+  try {
+    if (typeof window !== "undefined" && window.studynest?.sidecarBaseUrl) {
+      const url = await window.studynest.sidecarBaseUrl();
+      if (url?.trim()) return url.trim();
+    }
+  } catch {
+    /* preload not ready yet */
   }
-  _localBase = LOCAL_AI_BASE_URL;
-  return _localBase;
+  return LOCAL_AI_BASE_URL;
 }
 
 /** Desktop uses only the bundled local assistant — no remote AI fallback. */

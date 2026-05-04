@@ -29,6 +29,13 @@ function createWindow() {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: false,
+            /**
+             * Packaged builds load the UI from `file://`. With default webSecurity,
+             * the renderer cannot `fetch()` the local sidecar at http://127.0.0.1 …
+             * ("Failed to fetch" / net::ERR_BLOCKED_BY_CLIENT). Dev uses http://5173
+             * so same-origin rules differ — keep security on there.
+             */
+            webSecurity: isDev,
         },
     });
     if (isDev) {

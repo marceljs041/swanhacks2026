@@ -24,20 +24,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Gemma 4 E4B (text + audio) via transformers — same stack for /local-ai/* and audio sessions.
 local-ai = [
-    "llama-cpp-python>=0.3.1",
-]
-# Audio path: required for the chunked /local-ai/audio-session endpoints
-# to actually run Gemma 4 E4B over recorded audio. Without these the
-# sidecar still accepts uploads, but finalize returns a stub response
-# (title + placeholder body) so the desktop UI doesn't break in dev.
-local-audio = [
     "transformers>=4.50.0",
-    # Torch is intentionally unpinned — installers should pick the
-    # right CUDA / ROCm / CPU wheel for their box.
     "torch>=2.3",
     "librosa>=0.10",
     "soundfile>=0.12",
+    "huggingface_hub>=0.24",
 ]
 cloud-ai = [
     "google-generativeai>=0.7.2",

@@ -11,7 +11,7 @@ studynest/
   apps/
     mobile/    Expo (React Native) — capture-first
     desktop/   Electron + React + Vite — deep study + offline AI
-    api/       FastAPI cloud backend + local llama-cpp-python sidecar
+    api/       FastAPI cloud backend + local Gemma 4 E4B sidecar (transformers)
   packages/
     shared/    TypeScript types shared across apps
     db-schema/ SQLite + Postgres DDL (single source of truth)
@@ -29,7 +29,7 @@ studynest/
 - **Local SQLite** is the source of truth on each device.
 - Every mutation writes locally **and** appends to a `sync_outbox` row in the same transaction.
 - A background sync worker drains the outbox to `/sync/push` and pulls remote deltas via `/sync/pull`.
-- The desktop app spawns a Python sidecar (`apps/api/local_sidecar`) that runs Gemma 3 4B locally via `llama-cpp-python` and exposes it on `http://127.0.0.1:8765`.
+- The desktop app spawns a Python sidecar (`apps/api/local_sidecar`) that runs **Gemma 4 E4B** locally via `transformers` (same weights for text and audio) on `http://127.0.0.1:8765`.
 - The mobile app falls back to the cloud API for AI when online.
 
 See [`docs/architecture.md`](docs/architecture.md) and [`docs/sync.md`](docs/sync.md).
@@ -72,4 +72,4 @@ See `.env.example` for required environment variables.
 
 ## Hackathon demo
 
-Run `pnpm --filter @notegoat/desktop seed` to populate a class, notes, and study plan, then follow [`docs/demo-script.md`](docs/demo-script.md).
+Run `pnpm --filter ./apps/desktop seed` to populate a class, notes, and study plan, then follow [`docs/demo-script.md`](docs/demo-script.md).

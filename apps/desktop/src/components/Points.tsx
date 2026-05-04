@@ -10,6 +10,7 @@ import {
   xpByDay,
 } from "../db/repositories.js";
 import { refreshUserBadges } from "../lib/badgesSync.js";
+import { BRAND_FLASHCARD_HERO_URL, BRAND_QUIZ_HERO_URL } from "../lib/brand.js";
 import {
   GOAT_BASE_IMAGE,
   UPGRADE_ITEMS,
@@ -366,11 +367,11 @@ function TodayProgressCard({
       <p>Complete 2 more study actions to earn points.</p>
       <div className="reward-quick-actions">
         <button type="button" onClick={onFlashcards}>
-          <img src="/flashcard.svg" alt="" />
+          <img src={BRAND_FLASHCARD_HERO_URL} alt="" />
           <span>Review Flashcards</span>
         </button>
         <button type="button" onClick={onQuiz}>
-          <img src="/quiz.svg" alt="" />
+          <img src={BRAND_QUIZ_HERO_URL} alt="" />
           <span>Take a Quiz</span>
         </button>
       </div>

@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { fetchBadgeProgressMetrics, goatUpgradePurchases, spendRewardPoints, totalRewardPoints, totalXp, totalXpToday, xpByDay, } from "../db/repositories.js";
 import { refreshUserBadges } from "../lib/badgesSync.js";
+import { BRAND_FLASHCARD_HERO_URL, BRAND_QUIZ_HERO_URL } from "../lib/brand.js";
 import { GOAT_BASE_IMAGE, UPGRADE_ITEMS, buildBadges, buildRewardState, equipUpgrade, goatPreviewImage, loadEquippedUpgradeIds, rewardLevel, saveEquippedUpgradeIds, } from "../lib/rewards.js";
 import { useApp } from "../store.js";
 import { withViewTransition } from "../lib/viewTransition.js";
@@ -163,7 +164,7 @@ function RewardStatCard({ icon, value, label, tone, }) {
     return (_jsxs("article", { className: "reward-stat-card", children: [_jsx("span", { className: `reward-stat-icon ${tone}`, children: icon }), _jsxs("span", { children: [_jsx("strong", { children: value }), _jsx("small", { children: label })] })] }));
 }
 function TodayProgressCard({ xpLine, percent, onFlashcards, onQuiz, }) {
-    return (_jsxs("article", { className: "reward-card today-progress-card", children: [_jsxs("div", { className: "reward-card-title", children: [_jsx("span", { className: "reward-title-icon", children: _jsx(TargetIcon, {}) }), _jsx("h2", { children: "Today's Progress" })] }), _jsxs("div", { className: "today-progress-row", children: [_jsx("strong", { children: xpLine }), _jsxs("strong", { children: [percent, "%"] })] }), _jsx(ProgressBar, { value: percent }), _jsx("p", { children: "Complete 2 more study actions to earn points." }), _jsxs("div", { className: "reward-quick-actions", children: [_jsxs("button", { type: "button", onClick: onFlashcards, children: [_jsx("img", { src: "/flashcard.svg", alt: "" }), _jsx("span", { children: "Review Flashcards" })] }), _jsxs("button", { type: "button", onClick: onQuiz, children: [_jsx("img", { src: "/quiz.svg", alt: "" }), _jsx("span", { children: "Take a Quiz" })] })] })] }));
+    return (_jsxs("article", { className: "reward-card today-progress-card", children: [_jsxs("div", { className: "reward-card-title", children: [_jsx("span", { className: "reward-title-icon", children: _jsx(TargetIcon, {}) }), _jsx("h2", { children: "Today's Progress" })] }), _jsxs("div", { className: "today-progress-row", children: [_jsx("strong", { children: xpLine }), _jsxs("strong", { children: [percent, "%"] })] }), _jsx(ProgressBar, { value: percent }), _jsx("p", { children: "Complete 2 more study actions to earn points." }), _jsxs("div", { className: "reward-quick-actions", children: [_jsxs("button", { type: "button", onClick: onFlashcards, children: [_jsx("img", { src: BRAND_FLASHCARD_HERO_URL, alt: "" }), _jsx("span", { children: "Review Flashcards" })] }), _jsxs("button", { type: "button", onClick: onQuiz, children: [_jsx("img", { src: BRAND_QUIZ_HERO_URL, alt: "" }), _jsx("span", { children: "Take a Quiz" })] })] })] }));
 }
 function GoatCompanionPreview({ level, levelName, percent, goatImage, owned, equippedIds, onCustomize, }) {
     const slots = [

@@ -77,9 +77,20 @@ export function App() {
     const pollSidecar = async (): Promise<void> => {
       try {
         const s = await window.studynest?.sidecarStatus();
-        if (s) setSidecar(!!s.loaded);
+        if (s && typeof (s as { ok?: boolean }).ok === "boolean") {
+          const raw = s as { loaded?: boolean; error?: unknown };
+          const err =
+            raw.loaded === true
+              ? null
+              : typeof raw.error === "string"
+                ? raw.error
+                : null;
+          setSidecar(!!raw.loaded, err);
+        } else {
+          setSidecar(false, "Can't reach the local AI service.");
+        }
       } catch {
-        setSidecar(false);
+        setSidecar(false, "Can't reach the local AI service.");
       }
     };
     void pollSidecar();

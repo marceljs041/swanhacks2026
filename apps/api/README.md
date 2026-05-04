@@ -3,7 +3,7 @@
 Two Python apps in one package:
 
 1. **Cloud API** (`app/`) — FastAPI service that handles sync push/pull, attachment upload signing, device pairing, and cloud AI fallback. Backed by Supabase.
-2. **Local AI sidecar** (`local_sidecar/`) — FastAPI service spawned by the Electron desktop app. Loads Gemma 3 4B Instruct via `llama-cpp-python` and exposes `/local-ai/*` endpoints on `127.0.0.1:8765`.
+2. **Local AI sidecar** (`local_sidecar/`) — FastAPI service spawned by the Electron desktop app. Loads **Gemma 4 E4B** via `transformers` (same weights for text JSON routes and audio notes) and exposes `/local-ai/*` on `127.0.0.1:8765`.
 
 ## Setup
 
@@ -84,24 +84,13 @@ python -m local_sidecar.main
 
 See `../../.env.example` at the repo root.
 
-## llama-cpp-python install notes
+## PyTorch / CUDA
 
-On Apple Silicon, prebuilt wheels with Metal support are usually available:
-
-```bash
-CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python --upgrade --force-reinstall --no-cache-dir
-```
-
-On Linux with CUDA:
-
-```bash
-CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python --upgrade --force-reinstall --no-cache-dir
-```
-
-CPU-only fallback works without `CMAKE_ARGS`.
+Install `torch` for your platform (CPU wheel by default; follow [PyTorch](https://pytorch.org)
+for CUDA). The sidecar uses the same runtime for summaries and audio.
 
 ## Model download
 
-Place a Gemma 3 4B Instruct GGUF (Q4_K_M recommended) at the path in
-`STUDYNEST_GEMMA_MODEL_PATH`. The Electron app's `scripts/fetch-model.ts`
-downloads it from Hugging Face on first run.
+Place a Hugging Face snapshot of **google/gemma-4-E4B-it** at `STUDYNEST_GEMMA4_MODEL_PATH`
+(a directory containing `config.json`). The Electron app's `scripts/fetch-model.ts`
+runs `snapshot_download` into `app-data/models/gemma-4-e4b-it/` (gated — set `HF_TOKEN`).

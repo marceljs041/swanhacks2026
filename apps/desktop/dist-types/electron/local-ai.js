@@ -29,19 +29,20 @@ function resolvePythonExe(apiDir) {
     const venvPy = join(apiDir, ".venv", "bin", "python");
     if (!isWin && existsSync(venvPy))
         return venvPy;
-    return process.env.STUDYNEST_PYTHON_FALLBACK ?? "python3";
+    const fb = process.env.STUDYNEST_PYTHON_FALLBACK?.trim();
+    if (fb)
+        return fb;
+    /* Windows zips built on Linux ship a Linux .venv only — Scripts\\python.exe is absent. */
+    return isWin ? "python" : "python3";
 }
-const GEMMA_FILENAME = "gemma-3-4b-it-q4_k_m.gguf";
+/** Directory name under `app-data/models/` for HF snapshot / `pnpm fetch-model`. */
+const GEMMA4_SNAPSHOT_DIR = "gemma-4-e4b-it";
 /**
- * Must match `apps/desktop/scripts/fetch-model.ts` default destination:
- * `<repo>/app-data/models/<filename>`.
- *
- * Electron main often does not load `.env`, so we cannot rely on
- * `STUDYNEST_GEMMA_MODEL_PATH` being set; prefer the repo copy when present,
- * then Electron userData (packaged / manual install).
+ * HuggingFace snapshot folder for Gemma 4 E4B (text + audio). Electron main often
+ * does not load `.env`; resolve repo `app-data/models/<dir>` when present.
  */
-function resolveModelPath() {
-    const envPath = process.env.STUDYNEST_GEMMA_MODEL_PATH?.trim();
+function resolveGemma4ModelPath() {
+    const envPath = process.env.STUDYNEST_GEMMA4_MODEL_PATH?.trim();
     if (envPath) {
         if (isAbsolute(envPath))
             return envPath;
@@ -51,33 +52,36 @@ function resolveModelPath() {
         return resolve(base, envPath);
     }
     if (app.isPackaged) {
-        const bundled = join(process.resourcesPath, "app-data", "models", GEMMA_FILENAME);
-        if (existsSync(bundled))
+        const bundled = join(process.resourcesPath, "app-data", "models", GEMMA4_SNAPSHOT_DIR);
+        if (existsSync(join(bundled, "config.json")))
             return bundled;
-        return join(app.getPath("userData"), "models", GEMMA_FILENAME);
+        return join(app.getPath("userData"), "models", GEMMA4_SNAPSHOT_DIR);
     }
     const repoRoot = join(resolveApiDir(), "..", "..");
-    const repoDefault = join(repoRoot, "app-data", "models", GEMMA_FILENAME);
-    if (existsSync(repoDefault))
+    const repoDefault = join(repoRoot, "app-data", "models", GEMMA4_SNAPSHOT_DIR);
+    if (existsSync(join(repoDefault, "config.json")))
         return repoDefault;
-    return join(app.getPath("userData"), "models", GEMMA_FILENAME);
+    return join(app.getPath("userData"), "models", GEMMA4_SNAPSHOT_DIR);
 }
 export function startSidecar(opts = {}) {
     if (proc)
         return current();
     const apiDir = opts.apiDir ?? resolveApiDir();
     const python = opts.pythonExe ?? resolvePythonExe(apiDir);
-    const modelPath = opts.modelPath ?? resolveModelPath();
+    const modelDir = opts.gemma4ModelPath ?? resolveGemma4ModelPath();
     const env = {
         ...process.env,
         STUDYNEST_LOCAL_AI_PORT: String(SIDECAR_PORT),
-        STUDYNEST_GEMMA_MODEL_PATH: modelPath,
+        STUDYNEST_GEMMA4_MODEL_PATH: modelDir,
         PYTHONPATH: apiDir,
     };
+    console.log(`[sidecar] spawn python=${python} cwd=${apiDir} modelDir=${modelDir}`);
     const child = spawn(python, ["-m", "local_sidecar.main"], {
         cwd: apiDir,
         env,
         stdio: ["ignore", "pipe", "pipe"],
+        /* Windows: bare `python` is often a launcher app; shell helps some setups. */
+        shell: isWin,
     });
     proc = child;
     child.stdout?.on("data", (chunk) => {

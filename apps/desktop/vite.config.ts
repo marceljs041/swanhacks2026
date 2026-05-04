@@ -13,6 +13,8 @@ export default defineConfig(({ mode }) => {
   const localAiUrl = env.STUDYNEST_LOCAL_AI_URL ?? "http://127.0.0.1:8765";
 
   return {
+    /** Required for packaged Electron (`file://`); absolute `/logo.svg` breaks. */
+    base: "./",
     assetsInclude: ["**/*.wasm"],
     resolve: {
       alias: {

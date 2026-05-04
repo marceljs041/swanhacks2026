@@ -15,8 +15,8 @@
 │                 │    │                 │        │    │  Supabase (Postgres  │
 │                 │    │  127.0.0.1:8765 │        │    │  + Storage + Auth)   │
 │                 │    │  Python sidecar │        │    │                      │
-│                 │    │  Gemma 3 4B     │        │    │                      │
-│                 │    │  llama-cpp-python         │    │                      │
+│                 │    │  Gemma 4 E4B    │        │    │                      │
+│                 │    │  transformers           │    │                      │
 └─────────────────┘    └───────────────────────────┘    └──────────────────────┘
 ```
 
@@ -29,7 +29,7 @@
 
 ## Process model (desktop)
 
-- Electron main starts the Python sidecar as a child process with `STUDYNEST_GEMMA_MODEL_PATH` injected.
+- Electron main starts the Python sidecar as a child process with `STUDYNEST_GEMMA4_MODEL_PATH` pointing at the Gemma 4 E4B HF snapshot directory.
 - Renderer talks to the sidecar via plain HTTP (no IPC needed for AI calls).
 - IPC via `contextBridge` is reserved for filesystem operations, sync triggers, and "open file" dialogs.
 

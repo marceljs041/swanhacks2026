@@ -11,7 +11,7 @@ online.
 ## Why it's different
 
 Every other AI study app dies when the Wi-Fi dies. StudyNest is built
-for the opposite. The desktop app ships a local Gemma 3 4B model, the
+for the opposite. The desktop app ships a local Gemma 4 E4B model, the
 mobile app captures everything offline, and a SQLite-first sync layer
 keeps the two in lockstep when you reconnect.
 
@@ -40,7 +40,7 @@ keeps the two in lockstep when you reconnect.
 | Monorepo    | pnpm workspaces + Turborepo                                   |
 | Mobile      | Expo Router, expo-sqlite, expo-av, expo-image-picker, Zustand |
 | Desktop     | Electron + Vite + React, better-sqlite3, contextBridge IPC    |
-| Local AI    | llama-cpp-python sidecar, Gemma 3 4B Instruct (Q4_K_M GGUF)   |
+| Local AI    | transformers sidecar, Gemma 4 E4B (HF snapshot, text + audio) |
 | Cloud API   | FastAPI, Pydantic, Supabase (Postgres + Storage)              |
 | Cloud AI    | Gemini → OpenAI → deterministic templates (graceful fallback) |
 | Identity    | Anonymous demo user; device pairing via 6-digit code          |

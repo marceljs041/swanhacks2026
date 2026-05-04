@@ -19,8 +19,8 @@ supabase>=2.7.0
 python-multipart>=0.0.9
 ulid-py>=1.1.0
 
-# --- Extra: local AI sidecar (llama-cpp-python / GGUF inference) ---
-llama-cpp-python>=0.3.1
+# --- Extra: local AI sidecar (Gemma 4 E4B via transformers — see apps/api pyproject local-ai) ---
+# transformers torch librosa soundfile huggingface_hub (pip install -e "apps/api[local-ai]")
 
 # --- Extra: cloud AI fallback (Gemini / OpenAI) ---
 google-generativeai>=0.7.2

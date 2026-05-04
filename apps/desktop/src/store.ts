@@ -54,6 +54,8 @@ interface AppState {
   weekTasks: StudyTaskRow[];
   syncStatus: SyncStatus;
   sidecarLoaded: boolean;
+  /** Last LLM load error from `/health` when `loaded` is false; null if OK or unknown. */
+  sidecarError: string | null;
   xpToday: number;
   streak: number;
   theme: ThemeName;
@@ -145,7 +147,7 @@ interface AppState {
   setQuizzes: (q: QuizRow[]) => void;
   setWeekTasks: (t: StudyTaskRow[]) => void;
   setSyncStatus: (s: SyncStatus) => void;
-  setSidecar: (loaded: boolean) => void;
+  setSidecar: (loaded: boolean, error: string | null) => void;
   setXp: (xp: number, streak: number) => void;
   setTheme: (t: ThemeName) => void;
   setProfile: (p: Profile) => void;
@@ -193,6 +195,7 @@ export const useApp = create<AppState>((set) => ({
   weekTasks: [],
   syncStatus: "offline",
   sidecarLoaded: false,
+  sidecarError: null,
   xpToday: 0,
   streak: 0,
   theme: getStoredTheme(),
@@ -223,7 +226,7 @@ export const useApp = create<AppState>((set) => ({
   setQuizzes: (quizzes) => set({ quizzes }),
   setWeekTasks: (weekTasks) => set({ weekTasks }),
   setSyncStatus: (syncStatus) => set({ syncStatus }),
-  setSidecar: (sidecarLoaded) => set({ sidecarLoaded }),
+  setSidecar: (sidecarLoaded, sidecarError) => set({ sidecarLoaded, sidecarError }),
   setXp: (xpToday, streak) => set({ xpToday, streak }),
   setTheme: (theme) => {
     applyTheme(theme);

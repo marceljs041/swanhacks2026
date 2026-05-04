@@ -1,4 +1,4 @@
-"""FastAPI sidecar that runs Gemma 3 4B locally for the desktop app.
+"""FastAPI sidecar that runs Gemma 4 E4B locally for the desktop app.
 
 Spawned as a child process by Electron (`apps/desktop/electron/local-ai.ts`).
 Listens on 127.0.0.1:8765 by default. Endpoints accept the same shapes as

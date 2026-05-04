@@ -1,5 +1,5 @@
 {
-  "name": "@notegoat/desktop",
+  "name": "note-goat-desktop",
   "version": "0.1.0",
   "private": true,
   "description": "Note Goat — offline-first study workspace (desktop).",
@@ -9,7 +9,9 @@
     "dev": "vite",
     "prebuild": "node scripts/prepare-electron-bundle.mjs",
     "build": "tsc -b && vite build && electron-builder",
-    "build:win": "pnpm run prebuild && tsc -b && vite build && electron-builder --win",
+    "build:win": "pnpm run prebuild && tsc -b && vite build && electron-builder --win zip --x64",
+    "build:win:portable": "pnpm run prebuild && tsc -b && vite build && electron-builder --win portable --x64",
+    "build:win:installer": "pnpm run prebuild && tsc -b && vite build && electron-builder --win nsis --x64",
     "build:bundle": "pnpm run fetch-model && pnpm run build",
     "electron": "electron .",
     "typecheck": "tsc -b --noEmit",
@@ -58,7 +60,7 @@
       {
         "from": "../../app-data/models",
         "to": "app-data/models",
-        "filter": ["**/*.gguf"]
+        "filter": ["gemma-4-e4b-it/**/*"]
       }
     ],
     "mac": {

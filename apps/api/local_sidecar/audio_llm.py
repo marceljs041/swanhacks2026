@@ -1,27 +1,17 @@
-"""Gemma 4 E4B multimodal (audio) wrapper for the local sidecar.
+"""Gemma 4 E4B multimodal model — **single stack** for text JSON + audio notes.
 
-This is the bridge that actually sends WAV chunks to the model. The
-companion :mod:`local_sidecar.llm` module loads the GGUF text-only
-``Gemma 3 4B IT`` via ``llama-cpp-python``; that path can't ingest
-audio. As of llama.cpp PR #21421 audio works in ``libmtmd`` but the
-HTTP server (and therefore ``llama-cpp-python.create_chat_completion``)
-doesn't route ``input_audio`` blocks for Gemma 4 (see issue #21868,
-"closed: not planned"). The reliable Python path is HuggingFace
-``transformers`` + ``AutoModelForMultimodalLM`` with the
-``google/gemma-4-E4B-it`` weights.
+Uses HuggingFace ``transformers`` + ``AutoModelForMultimodalLM``. Weights come from:
 
-Behaviour:
-  * If ``transformers`` / ``torch`` / ``librosa`` are importable AND a
-    Gemma 4 checkpoint can be loaded, calls go to the real model.
-  * Otherwise the sidecar surfaces a deterministic "stub" response so
-    the rest of the chunked-upload pipeline (frontend recorder, session
-    bookkeeping, note creation) can be exercised without GPU. The
-    sidecar reports ``backend: "stub"`` in that case so the renderer
-    can show an honest toast.
+  * **Offline:** set ``STUDYNEST_GEMMA4_MODEL_PATH`` to a local snapshot directory
+    (must contain ``config.json``), e.g. from ``huggingface-cli download`` or
+    ``pnpm fetch-model`` in the desktop app.
+  * **Online:** falls back to hub id ``STUDYNEST_GEMMA4_AUDIO_MODEL`` or
+    ``google/gemma-4-E4B-it`` (needs HF auth for gated weights).
 
-The model is loaded lazily on the first finalize call — warming it
-eagerly at sidecar startup would block ``/health`` for several minutes
-on first launch (the gated weights are ~16 GB at f16 / ~5 GB at 4-bit).
+If the model can't load, audio falls back to a stub; text routes use template
+fallbacks in ``main.py`` as before.
+
+Warm :func:`warm_model` at startup so ``/health`` reflects load status (slow first boot).
 """
 
 from __future__ import annotations
@@ -32,10 +22,17 @@ import re
 import threading
 from typing import Any
 
-# Default to the official Google checkpoint. Users can swap to a local
-# directory or a quantized fork via the env var.
+# Hub id when no local directory is set.
 _MODEL_ID_ENV = "STUDYNEST_GEMMA4_AUDIO_MODEL"
 _DEFAULT_MODEL_ID = "google/gemma-4-E4B-it"
+
+
+def _resolve_model_source() -> str:
+    """``from_pretrained`` argument: local directory (offline) or hub model id."""
+    local = os.environ.get("STUDYNEST_GEMMA4_MODEL_PATH", "").strip()
+    if local and os.path.isdir(local):
+        return local
+    return os.environ.get(_MODEL_ID_ENV, _DEFAULT_MODEL_ID)
 
 _lock = threading.Lock()
 _model: Any = None
@@ -83,7 +80,7 @@ def _load() -> tuple[Any, Any, Any] | None:
             _load_error = f"transformers/torch unavailable: {e}"
             return None
 
-        model_id = os.environ.get(_MODEL_ID_ENV, _DEFAULT_MODEL_ID)
+        model_source = _resolve_model_source()
 
         # Pick the best dtype/device combo we can. CUDA → bfloat16 (or
         # 4-bit if bitsandbytes is around). MPS → float16. Else CPU
@@ -126,14 +123,14 @@ def _load() -> tuple[Any, Any, Any] | None:
             else:
                 kwargs = {"device_map": {"": "cpu"}, "torch_dtype": torch.float32}
 
-            processor = AutoProcessor.from_pretrained(model_id)
-            model = AutoModelForMultimodalLM.from_pretrained(model_id, **kwargs)
+            processor = AutoProcessor.from_pretrained(model_source)
+            model = AutoModelForMultimodalLM.from_pretrained(model_source, **kwargs)
             model.eval()
             _model, _processor, _torch = model, processor, torch
             _load_error = None
             return _model, _processor, _torch
         except Exception as e:  # pragma: no cover — env-specific
-            _load_error = f"failed to load {model_id}: {e}"
+            _load_error = f"failed to load {model_source}: {e}"
             return None
 
 
@@ -160,6 +157,30 @@ def backend_name() -> str:
         return "stub"
     # Optimistic: we haven't tried yet, assume the load will succeed.
     return "gemma4"
+
+
+def warm_model() -> None:
+    """Eager load (same weights as audio). Started from ``main`` lifespan."""
+    _load()
+
+
+def text_stack_status() -> dict[str, Any]:
+    """Keys expected by desktop ``/health`` consumers (legacy llama GGUF shape)."""
+    src = _resolve_model_source()
+    label = os.path.basename(src.rstrip(os.sep)) if os.path.isdir(src) else src
+    if _model is not None:
+        return {
+            "loaded": True,
+            "model": label,
+            "context_size": 0,
+            "error": None,
+        }
+    return {
+        "loaded": False,
+        "model": label,
+        "context_size": 0,
+        "error": _load_error,
+    }
 
 
 # ----------------------------- Inference -----------------------------
@@ -302,6 +323,59 @@ def generate_notes(
             [new_tokens], skip_special_tokens=True, clean_up_tokenization_spaces=False
         )[0]
         return _extract_json(text)
+
+
+def generate_json_text(
+    system: str,
+    user: str,
+    *,
+    max_tokens: int = 1024,
+) -> dict[str, Any]:
+    """Text-only JSON generation (summaries, quizzes, etc.) on the same Gemma 4 stack."""
+    loaded = _load()
+    if loaded is None:
+        raise RuntimeError(_load_error or "gemma4_not_available")
+    model, processor, torch = loaded
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": [{"type": "text", "text": system}]},
+        {"role": "user", "content": [{"type": "text", "text": user}]},
+    ]
+
+    def run_one(msgs: list[dict[str, Any]]) -> str:
+        inputs = processor.apply_chat_template(
+            msgs,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        with torch.inference_mode():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=0.3,
+                do_sample=False,
+            )
+        input_len = inputs["input_ids"].shape[1]
+        new_tokens = outputs[0, input_len:]
+        return processor.batch_decode(
+            [new_tokens], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
+
+    raw = run_one(messages)
+    try:
+        return _extract_json(raw)
+    except Exception:
+        retry_user = user + "\n\nReminder: respond with VALID JSON only. No prose."
+        messages[1] = {
+            "role": "user",
+            "content": [{"type": "text", "text": retry_user}],
+        }
+        raw = run_one(messages)
+        return _extract_json(raw)
 
 
 def _system_text() -> str:

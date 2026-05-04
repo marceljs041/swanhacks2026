@@ -1,7 +1,8 @@
 interface SidecarOptions {
     pythonExe?: string;
     apiDir?: string;
-    modelPath?: string;
+    /** Override Gemma 4 snapshot directory (must contain `config.json` when offline). */
+    gemma4ModelPath?: string;
 }
 export interface SidecarHandle {
     port: number;

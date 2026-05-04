@@ -10,6 +10,7 @@ import { CheckIcon, SettingsIcon } from "./icons.js";
 
 export const Settings: FC = () => {
   const sidecarLoaded = useApp((s) => s.sidecarLoaded);
+  const sidecarError = useApp((s) => s.sidecarError);
   const syncStatus = useApp((s) => s.syncStatus);
   const theme = useApp((s) => s.theme);
   const setTheme = useApp((s) => s.setTheme);
@@ -75,6 +76,12 @@ export const Settings: FC = () => {
             <div style={{ fontSize: 13 }}>
               {sidecarLoaded ? (
                 <span>Ready to help with summaries, quizzes, and questions in your notes.</span>
+              ) : sidecarError ? (
+                <span style={{ color: "var(--color-danger, #b42318)" }}>
+                  Local AI failed to start: {sidecarError} Voice notes use a separate Gemma 4 audio
+                  stack if installed; otherwise they fall back to a placeholder until Python deps and
+                  models are available.
+                </span>
               ) : (
                 <span style={{ color: "var(--color-textMuted)" }}>
                   The assistant is still starting. If this lasts more than a minute, fully quit the app

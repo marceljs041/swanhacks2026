@@ -15,6 +15,7 @@ export const useApp = create((set) => ({
     weekTasks: [],
     syncStatus: "offline",
     sidecarLoaded: false,
+    sidecarError: null,
     xpToday: 0,
     streak: 0,
     theme: getStoredTheme(),
@@ -43,7 +44,7 @@ export const useApp = create((set) => ({
     setQuizzes: (quizzes) => set({ quizzes }),
     setWeekTasks: (weekTasks) => set({ weekTasks }),
     setSyncStatus: (syncStatus) => set({ syncStatus }),
-    setSidecar: (sidecarLoaded) => set({ sidecarLoaded }),
+    setSidecar: (sidecarLoaded, sidecarError) => set({ sidecarLoaded, sidecarError }),
     setXp: (xpToday, streak) => set({ xpToday, streak }),
     setTheme: (theme) => {
         applyTheme(theme);

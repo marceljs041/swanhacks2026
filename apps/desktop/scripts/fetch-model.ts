@@ -1,54 +1,60 @@
 /**
- * Downloads Gemma 3 4B Instruct (Q4_K_M GGUF) into app-data/models/.
- * Run with: pnpm --filter @notegoat/desktop fetch-model
+ * Downloads the Gemma 4 E4B Instruct HF snapshot into app-data/models/gemma-4-e4b-it/.
+ * Run: pnpm --filter ./apps/desktop fetch-model
  *
- * Set STUDYNEST_GEMMA_MODEL_URL to override the source.
+ * Weights are gated — set HF_TOKEN (see https://huggingface.co/settings/tokens).
+ * Override hub id with STUDYNEST_GEMMA4_HUB_ID or destination with STUDYNEST_GEMMA4_MODEL_PATH.
  */
-import { createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-const DEFAULT_URL =
-  "https://huggingface.co/lmstudio-community/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf?download=true";
+const DEFAULT_HUB_ID = "google/gemma-4-E4B-it";
+
+function resolvePython(): string {
+  const apiRoot = resolve(process.cwd(), "..", "api");
+  const isWin = process.platform === "win32";
+  const py = isWin
+    ? join(apiRoot, ".venv", "Scripts", "python.exe")
+    : join(apiRoot, ".venv", "bin", "python3");
+  if (!existsSync(py)) {
+    throw new Error(
+      `Need apps/api/.venv with huggingface_hub (run: cd apps/api && pip install -e ".[local-ai]") — missing ${py}`,
+    );
+  }
+  return py;
+}
 
 async function main(): Promise<void> {
-  const url = process.env.STUDYNEST_GEMMA_MODEL_URL ?? DEFAULT_URL;
+  const hubId = process.env.STUDYNEST_GEMMA4_HUB_ID ?? DEFAULT_HUB_ID;
   const dest =
-    process.env.STUDYNEST_GEMMA_MODEL_PATH ??
-    resolve(process.cwd(), "..", "..", "app-data", "models", "gemma-3-4b-it-q4_k_m.gguf");
+    process.env.STUDYNEST_GEMMA4_MODEL_PATH ??
+    resolve(process.cwd(), "..", "..", "app-data", "models", "gemma-4-e4b-it");
 
   mkdirSync(dirname(dest), { recursive: true });
-  if (existsSync(dest) && statSync(dest).size > 1_000_000_000) {
-    console.log(`Model already present at ${dest}`);
+  const marker = join(dest, "config.json");
+  if (existsSync(marker)) {
+    console.log(`Model snapshot already present at ${dest}`);
     return;
   }
 
-  console.log(`Downloading Gemma 3 4B Instruct (Q4_K_M) → ${dest}`);
-  const res = await fetch(url);
-  if (!res.ok || !res.body) {
-    throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+  console.log(`Downloading ${hubId} → ${dest}`);
+  const py = resolvePython();
+  const script = `
+from huggingface_hub import snapshot_download
+snapshot_download(${JSON.stringify(hubId)}, local_dir=${JSON.stringify(dest)})
+`;
+  const r = spawnSync(py, ["-c", script], {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  if (r.status !== 0) {
+    throw new Error("snapshot_download failed — check HF_TOKEN for gated models.");
   }
-  const total = Number(res.headers.get("content-length") ?? 0);
-  let downloaded = 0;
-  const out = createWriteStream(dest);
-  const reader = res.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    out.write(value);
-    downloaded += value.byteLength;
-    if (total) {
-      const pct = ((downloaded / total) * 100).toFixed(1);
-      process.stdout.write(`\r  ${pct}% (${(downloaded / 1e9).toFixed(2)} GB)`);
-    }
-  }
-  out.end();
-  process.stdout.write("\nDone.\n");
+  console.log("Done.");
 }
 
 main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
-// Silence "unused" when executed via tsx with custom flags.
-void join;

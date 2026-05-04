@@ -7,7 +7,7 @@
  *  - 1 study plan with this-week tasks
  *  - A few XP events so the streak shows nonzero
  *
- * Run with: pnpm --filter @notegoat/desktop seed
+ * Run with: pnpm --filter ./apps/desktop seed
  */
 import {
   recordXp,

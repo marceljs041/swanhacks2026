@@ -11,7 +11,7 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "mobile": "pnpm --filter @studynest/mobile",
-    "desktop": "pnpm --filter @notegoat/desktop",
+    "desktop": "pnpm --filter ./apps/desktop",
     "api": "pnpm --filter @studynest/api",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "electron:download": "node scripts/ensure-electron.cjs",
